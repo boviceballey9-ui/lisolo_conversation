@@ -21,6 +21,7 @@ export function AuthForm({ title, submitLabel, loading, error, onSubmit, footer,
   return (
     <main style={styles.page}>
       <form style={styles.card} onSubmit={handleSubmit} noValidate>
+        <img src="/logo-lisolo.svg" alt="Lisolo" style={styles.logo} width={200} height={56} />
         <h1 style={styles.title}>{title}</h1>
         {error && (
           <p role="alert" style={styles.error}>
@@ -31,7 +32,9 @@ export function AuthForm({ title, submitLabel, loading, error, onSubmit, footer,
         <button type="submit" style={styles.button} disabled={loading}>
           {loading ? "Patientez…" : submitLabel}
         </button>
-        <p style={styles.footer}>{footer}</p>
+        <p className="auth-footer" style={styles.footer}>
+          {footer}
+        </p>
       </form>
     </main>
   );

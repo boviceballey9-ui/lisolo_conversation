@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Projet
 
-Clone de WhatsApp à but pédagogique (messagerie, médias, appels WebRTC). L'utilisateur apprend : expliquer les choix en français. Environnement : **Windows + PowerShell + Docker Desktop** — donner les commandes en syntaxe PowerShell (`;` et non `&&`, `Copy-Item`, `Invoke-RestMethod`).
+**Lisolo** (« conversation » en lingala) : messagerie à but pédagogique, dans l'esprit de WhatsApp (messagerie, médias, appels WebRTC, notifications push). Dépôt GitHub `boviceballey9-ui/lisolo_conversation`. Les identifiants techniques gardent l'ancien nom : base et utilisateur PostgreSQL `whatsapp` / `whatsapp_test`, conteneurs `wa-*`, dossier local. Ne pas les renommer sans migration des données. L'utilisateur apprend : expliquer les choix en français. Environnement : **Windows + PowerShell + Docker Desktop** — donner les commandes en syntaxe PowerShell (`;` et non `&&`, `Copy-Item`, `Invoke-RestMethod`).
 
 ## Commandes
 
@@ -136,6 +136,24 @@ Réponds toujours en français.
   - `localhost` / `TURN_EXTERNAL_IP=127.0.0.1` : local seulement ;
   - access token dans l'URL WebSocket PeerJS (vérifié à la connexion uniquement) ;
   - pas de renégociation si la caméra est ajoutée en cours d'appel.
+
+## Charte graphique Lisolo
+
+- **Couleurs uniquement via les variables de `:root`** dans `frontend/src/chat.css` : bordeaux `#7B1E2B`, bordeaux foncé `#5A1520`, beige clair `#F3E6D3`, beige `#E8D5BC`, plus des rôles dérivés :
+  - `--ink` / `--ink-muted` (texte), `--surface`, `--panel`, `--border` (décoratif) ;
+  - `--field-border` (champs, ≥ 3:1) ;
+  - `--read` (✓✓ sur bordeaux) et `--read-on-light` (✓✓ sur fond clair) ;
+  - `--tick-on-accent`, `--danger-on-accent`.
+
+  Les pages Connexion / Inscription (`src/styles.ts`, styles en ligne) utilisent ces mêmes variables via `var(--…)`. Plus aucun vert.
+- Bulles envoyées : bordeaux et texte beige clair (règles `.bubble--mine …` en fin de `chat.css`). Bulles reçues : beige et texte `--ink`. Fond du chat : beige clair.
+- **`npm run check:contrast`** (`frontend/scripts/check-contrast.mjs`) lit `:root` et vérifie 25 paires réellement utilisées : 4,5:1 pour le texte, 3:1 pour les icônes et contours (WCAG AA). Toute nouvelle association de couleurs doit y être ajoutée.
+- Logos dans `frontend/public/`, en SVG faits main (mot « Lisolo » en traits, sans police) :
+  - `logo-lisolo.svg` : pages Connexion / Inscription ;
+  - `logo.svg` : en-tête de la barre latérale, écran vide ;
+  - `icon.svg` : favicon.
+
+  Les PNG (`icon-192/512.png`, `favicon.png`, `badge-72.png`) sont générés à partir des SVG (rendu Edge headless).
 
 ## Notifications push (Web Push)
 

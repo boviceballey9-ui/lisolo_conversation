@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" role="img" aria-label="Lisolo">
+  <!-- Lisolo : deux bulles de discussion qui se répondent (bordeaux et beige). -->
+  <g>
+    <!-- Bulle du fond (beige), pointe vers la droite -->
+    <rect x="40" y="6" width="74" height="54" rx="24" fill="#E8D5BC"/>
+    <path d="M94 56 L110 76 L80 60 Z" fill="#E8D5BC"/>
+    <!-- Bulle du premier plan (bordeaux), pointe vers la gauche -->
+    <rect x="6" y="30" width="76" height="54" rx="24" fill="#7B1E2B"/>
+    <path d="M24 80 L10 96 L40 84 Z" fill="#7B1E2B"/>
+    <!-- Trois points : « quelqu'un parle » -->
+    <circle cx="28" cy="57" r="5" fill="#F3E6D3"/>
+    <circle cx="44" cy="57" r="5" fill="#F3E6D3"/>
+    <circle cx="60" cy="57" r="5" fill="#F3E6D3"/>
+  </g>
+</svg>

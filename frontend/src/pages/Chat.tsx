@@ -575,6 +575,7 @@ export default function Chat() {
     <div className={`app${active ? " app--chat-open" : ""}`}>
       <aside className="sidebar">
         <header className="sidebar__header">
+          <img className="brand-logo" src="/logo.svg" alt="Lisolo" title="Lisolo" width={38} height={32} />
           {/* Cliquer sur mon avatar : changer ma photo de profil. */}
           <button
             type="button"
@@ -677,7 +678,8 @@ export default function Chat() {
           />
         ) : (
           <div className="chat-empty">
-            <h2>WhatsApp Clone</h2>
+            <img className="brand-logo chat-empty__logo" src="/logo.svg" alt="" width={120} height={100} />
+            <h2>Lisolo</h2>
             <p>Sélectionnez une discussion ou démarrez-en une nouvelle avec un numéro de téléphone.</p>
           </div>
         )}

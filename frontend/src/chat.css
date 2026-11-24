@@ -1,17 +1,34 @@
-/* Interface de chat, inspirée de WhatsApp Web. */
+/* Interface de Lisolo (mise en page inspirée des messageries web). Toutes les couleurs
+   viennent des variables de :root — vérifiées par `npm run check:contrast` (WCAG AA). */
 
 :root {
-  --green: #00a884;
-  --green-dark: #008069;
-  --panel: #f0f2f5;
-  --border: #e9edef;
-  --text: #111b21;
-  --text-muted: #667781;
-  --bubble-mine: #d9fdd3;
-  --bubble-theirs: #ffffff;
-  --chat-bg: #efeae2;
-  --read: #53bdeb;
-  --danger: #b42318;
+  /* ---------- Charte Lisolo ---------- */
+  --bordeaux: #7B1E2B;
+  --bordeaux-dark: #5A1520;
+  --beige-light: #F3E6D3;
+  --beige: #E8D5BC;
+  --ink: #2B1B1E; /* texte principal : brun très foncé plutôt que noir pur */
+  --ink-muted: #6B5550; /* texte secondaire, heures */
+  --surface: #FFFFFF; /* barre latérale, panneaux, champs */
+  --panel: #FAF3EA; /* en-têtes */
+  --border: #EADBC8; /* séparateurs décoratifs */
+  --field-border: #9C8377; /* contour des champs : ≥ 3:1 sur blanc (WCAG 1.4.11) */
+  --on-accent: #FFFFFF; /* texte et icônes sur bordeaux */
+  --read: #9FD8FF; /* ✓✓ « lu » sur bulle bordeaux */
+  --read-on-light: #1F6FB2; /* ✓✓ « lu » sur fond clair (liste des conversations) */
+  --tick-on-accent: #C9A98C; /* ✓ / ✓✓ « envoyé / reçu » sur bulle bordeaux */
+  --danger: #B42318;
+  --danger-on-accent: #FFC9C0; /* « Non envoyé » sur bulle bordeaux */
+
+  /* ---------- Rôles (alias utilisés dans le reste du fichier) ---------- */
+  --text: #2B1B1E;
+  --text-muted: #6B5550;
+  --chat-bg: #F3E6D3;
+  --bubble-mine: #7B1E2B;
+  --bubble-mine-text: #F3E6D3;
+  --bubble-mine-meta: #E8D5BC;
+  --bubble-theirs: #E8D5BC;
+  --shadow: rgba(43, 27, 30, 0.14);
 }
 
 body {
@@ -41,7 +58,7 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: #fff;
+  background: var(--surface);
   border-right: 1px solid var(--border);
 }
 
@@ -58,7 +75,7 @@ body {
   padding: 6px 10px;
   font: inherit;
   font-size: 13px;
-  color: var(--green-dark);
+  color: var(--bordeaux-dark);
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -68,12 +85,12 @@ body {
   background: var(--panel);
 }
 .btn--primary {
-  color: #fff;
-  background: var(--green);
-  border-color: var(--green);
+  color: var(--on-accent);
+  background: var(--bordeaux);
+  border-color: var(--bordeaux);
 }
 .btn--primary:hover {
-  background: var(--green-dark);
+  background: var(--bordeaux-dark);
 }
 .btn:disabled {
   opacity: 0.5;
@@ -94,7 +111,8 @@ body {
   flex-wrap: wrap;
 }
 .sidebar__me {
-  flex: 1;
+  /* Première ligne : logo, avatar et nom ; les boutons passent à la ligne suivante. */
+  flex: 1 1 calc(100% - 110px);
   min-width: 0;
   font-weight: 600;
   overflow: hidden;
@@ -104,8 +122,8 @@ body {
 .sidebar__offline {
   padding: 8px 12px;
   font-size: 13px;
-  color: #54656f;
-  background: #fff8e1;
+  color: var(--ink-muted);
+  background: var(--beige-light);
 }
 .sidebar__empty {
   padding: 24px 16px;
@@ -120,9 +138,9 @@ body {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  color: #fff;
+  color: var(--beige-light);
   font-weight: 600;
-  background: #6a7175;
+  background: var(--bordeaux-dark);
 }
 
 /* Nouvelle discussion */
@@ -145,7 +163,7 @@ body {
   padding: 8px 10px;
   font: inherit;
   font-size: 15px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--field-border);
   border-radius: 8px;
 }
 .new-chat__error {
@@ -208,7 +226,7 @@ body {
   cursor: pointer;
 }
 .conv-item:hover {
-  background: #f5f6f6;
+  background: var(--panel);
 }
 .conv-item--active {
   background: var(--panel);
@@ -237,7 +255,7 @@ body {
   color: var(--text-muted);
 }
 .conv-item__date--unread {
-  color: var(--green);
+  color: var(--bordeaux);
 }
 .conv-item__preview {
   display: flex;
@@ -251,7 +269,7 @@ body {
   white-space: nowrap;
 }
 .conv-item__preview--typing {
-  color: var(--green);
+  color: var(--bordeaux);
 }
 .badge {
   flex: none;
@@ -261,8 +279,8 @@ body {
   font-weight: 600;
   line-height: 20px;
   text-align: center;
-  color: #fff;
-  background: var(--green);
+  color: var(--on-accent);
+  background: var(--bordeaux);
   border-radius: 10px;
 }
 
@@ -324,7 +342,7 @@ body {
   color: var(--text-muted);
 }
 .chat__subtitle--active {
-  color: var(--green);
+  color: var(--bordeaux);
 }
 
 .chat__messages {
@@ -342,11 +360,11 @@ body {
   padding: 6px 14px;
   font: inherit;
   font-size: 13px;
-  color: var(--green-dark);
-  background: #fff;
+  color: var(--bordeaux-dark);
+  background: var(--surface);
   border: none;
   border-radius: 16px;
-  box-shadow: 0 1px 1px rgba(11, 20, 26, 0.13);
+  box-shadow: 0 1px 1px rgba(43, 27, 30, 0.13);
   cursor: pointer;
 }
 .chat__day {
@@ -354,10 +372,10 @@ body {
   margin: 10px 0 6px;
   padding: 5px 12px;
   font-size: 12.5px;
-  color: #54656f;
-  background: #fff;
+  color: var(--ink-muted);
+  background: var(--surface);
   border-radius: 8px;
-  box-shadow: 0 1px 1px rgba(11, 20, 26, 0.13);
+  box-shadow: 0 1px 1px rgba(43, 27, 30, 0.13);
 }
 
 /* Message système de groupe : « Alice a ajouté Bob » */
@@ -368,10 +386,10 @@ body {
   padding: 5px 12px;
   font-size: 12.5px;
   text-align: center;
-  color: #54656f;
-  background: #fff8c5;
+  color: var(--ink-muted);
+  background: var(--surface);
   border-radius: 8px;
-  box-shadow: 0 1px 1px rgba(11, 20, 26, 0.13);
+  box-shadow: 0 1px 1px rgba(43, 27, 30, 0.13);
 }
 
 /* Bulles */
@@ -382,7 +400,7 @@ body {
   font-size: 14.5px;
   line-height: 1.4;
   border-radius: 8px;
-  box-shadow: 0 1px 1px rgba(11, 20, 26, 0.13);
+  box-shadow: 0 1px 1px rgba(43, 27, 30, 0.13);
   overflow-wrap: anywhere;
 }
 .bubble--mine {
@@ -417,7 +435,7 @@ body {
   margin-bottom: 2px;
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--green-dark);
+  color: var(--bordeaux-dark);
 }
 /* Lien « Infos » sur mes messages : discret, plus visible au survol */
 .bubble__info {
@@ -453,9 +471,9 @@ body {
   display: flex;
   flex-direction: column;
   width: min(380px, 100%);
-  background: #fff;
+  background: var(--surface);
   border-left: 1px solid var(--border);
-  box-shadow: -2px 0 8px rgba(11, 20, 26, 0.08);
+  box-shadow: -2px 0 8px rgba(43, 27, 30, 0.08);
 }
 .side-panel__header {
   display: flex;
@@ -495,7 +513,7 @@ form.side-panel__section {
   padding: 8px 10px;
   font: inherit;
   font-size: 14px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--field-border);
   border-radius: 8px;
 }
 .side-panel__leave {
@@ -553,8 +571,8 @@ form.side-panel__section {
 .member__badge {
   padding: 2px 8px;
   font-size: 11.5px;
-  color: var(--green-dark);
-  background: #e7fce3;
+  color: var(--bordeaux-dark);
+  background: var(--beige-light);
   border-radius: 10px;
 }
 .member__actions {
@@ -567,7 +585,7 @@ form.side-panel__section {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  color: var(--green-dark);
+  color: var(--bordeaux-dark);
 }
 .info-preview {
   align-self: flex-end;
@@ -575,10 +593,10 @@ form.side-panel__section {
 
 .ticks {
   flex: none;
-  color: #8696a0;
+  color: var(--ink-muted);
 }
 .ticks--read {
-  color: var(--read);
+  color: var(--read-on-light);
 }
 
 /* Zone de saisie */
@@ -595,7 +613,7 @@ form.side-panel__section {
   padding: 10px 12px;
   font: inherit;
   font-size: 15px;
-  border: none;
+  border: 1px solid var(--field-border);
   border-radius: 8px;
   resize: none;
   outline: none;
@@ -607,14 +625,14 @@ form.side-panel__section {
   place-items: center;
   width: 42px;
   height: 42px;
-  color: #fff;
-  background: var(--green);
+  color: var(--on-accent);
+  background: var(--bordeaux);
   border: none;
   border-radius: 50%;
   cursor: pointer;
 }
 .chat__send:disabled {
-  background: #8696a0;
+  background: #C9B6A6; /* désactivé : pas d'exigence de contraste */
   cursor: default;
 }
 
@@ -625,13 +643,13 @@ form.side-panel__section {
   padding: 24px;
   text-align: center;
   color: var(--text-muted);
-  background: #f8f9fa;
-  border-bottom: 6px solid var(--green);
+  background: var(--beige-light);
+  border-bottom: 6px solid var(--bordeaux);
 }
 .chat-empty h2 {
   margin: 0 0 8px;
   font-weight: 300;
-  color: #41525d;
+  color: var(--ink-muted);
 }
 
 /* ---------- Mobile : une seule colonne à la fois ---------- */
@@ -715,7 +733,7 @@ form.side-panel__section {
   width: 220px;
   height: 140px;
   font-size: 32px;
-  background: rgba(11, 20, 26, 0.06);
+  background: rgba(43, 27, 30, 0.06);
   border-radius: 6px;
 }
 .media--audio .media__placeholder {
@@ -733,7 +751,7 @@ form.side-panel__section {
   font: inherit;
   text-align: left;
   color: inherit;
-  background: rgba(11, 20, 26, 0.05);
+  background: rgba(43, 27, 30, 0.05);
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -764,12 +782,12 @@ form.side-panel__section {
   height: 4px;
   margin-top: 6px;
   overflow: hidden;
-  background: rgba(11, 20, 26, 0.12);
+  background: rgba(43, 27, 30, 0.12);
   border-radius: 2px;
 }
 .upload-progress__bar {
   height: 100%;
-  background: var(--green);
+  background: var(--bordeaux);
   transition: width 0.15s linear;
 }
 
@@ -801,9 +819,9 @@ form.side-panel__section {
   flex-direction: column;
   min-width: 180px;
   padding: 6px 0;
-  background: #fff;
+  background: var(--surface);
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(11, 20, 26, 0.2);
+  box-shadow: 0 2px 8px rgba(43, 27, 30, 0.2);
 }
 .attach__menu button {
   padding: 10px 16px;
@@ -875,10 +893,10 @@ form.side-panel__section {
   margin: 4px 0;
   padding: 5px 8px 5px 12px;
   font-size: 13px;
-  color: #54656f;
-  background: #fff;
+  color: var(--ink-muted);
+  background: var(--surface);
   border-radius: 8px;
-  box-shadow: 0 1px 1px rgba(11, 20, 26, 0.13);
+  box-shadow: 0 1px 1px rgba(43, 27, 30, 0.13);
 }
 .chat__call-log--missed {
   color: var(--danger);
@@ -887,7 +905,7 @@ form.side-panel__section {
   padding: 2px 8px;
   font: inherit;
   font-size: 12px;
-  color: var(--green-dark);
+  color: var(--bordeaux-dark);
   background: none;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -905,7 +923,7 @@ form.side-panel__section {
   width: 56px;
   height: 56px;
   font-size: 22px;
-  color: #fff;
+  color: var(--on-accent);
   background: rgba(255, 255, 255, 0.18);
   border: none;
   border-radius: 50%;
@@ -915,14 +933,14 @@ form.side-panel__section {
   filter: brightness(1.15);
 }
 .call-btn--off {
-  color: #111b21;
-  background: #fff;
+  color: var(--ink);
+  background: var(--surface);
 }
 .call-btn--hangup {
   background: #ea0038;
 }
 .call-btn--accept {
-  background: var(--green);
+  background: var(--bordeaux);
 }
 
 /* Appel entrant : carte flottante */
@@ -936,8 +954,8 @@ form.side-panel__section {
   gap: 14px;
   width: min(420px, calc(100% - 32px));
   padding: 14px 16px;
-  color: #fff;
-  background: #1f2c34;
+  color: var(--on-accent);
+  background: var(--bordeaux-dark);
   border-radius: 14px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
   transform: translateX(-50%);
@@ -978,8 +996,8 @@ form.side-panel__section {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  background: #0b141a;
+  color: var(--on-accent);
+  background: var(--bordeaux-dark);
 }
 .call-screen__remote {
   position: absolute;
@@ -1021,7 +1039,7 @@ form.side-panel__section {
   width: min(28vw, 200px);
   aspect-ratio: 3 / 4;
   object-fit: cover;
-  background: #1f2c34;
+  background: var(--bordeaux-dark);
   border: 2px solid rgba(255, 255, 255, 0.25);
   border-radius: 10px;
   transform: scaleX(-1);
@@ -1034,4 +1052,68 @@ form.side-panel__section {
   bottom: 28px;
   display: flex;
   gap: 18px;
+}
+
+
+/* ---------- Charte Lisolo : bulles envoyées (bordeaux) ---------- */
+
+.bubble--mine {
+  color: var(--bubble-mine-text);
+}
+.bubble--mine .bubble__meta,
+.bubble--mine .bubble__info,
+.bubble--mine .doc__size {
+  color: var(--bubble-mine-meta);
+}
+.bubble--mine .ticks {
+  color: var(--tick-on-accent);
+}
+.bubble--mine .ticks--read {
+  color: var(--read);
+}
+.bubble--mine .bubble__failed {
+  color: var(--danger-on-accent);
+}
+.bubble--mine .doc {
+  background: rgba(255, 255, 255, 0.1);
+}
+.bubble--mine .media__placeholder {
+  background: rgba(255, 255, 255, 0.12);
+}
+.bubble--mine .upload-progress {
+  background: rgba(255, 255, 255, 0.25);
+}
+.bubble--mine .upload-progress__bar {
+  background: var(--beige-light);
+}
+
+/* Bulles reçues : nom de l'auteur (groupe) en bordeaux foncé (9,4:1 sur beige). */
+.bubble--theirs .bubble__sender {
+  color: var(--bordeaux-dark);
+}
+
+/* Écran d'appel entrant : « Accepter » en beige sur la carte bordeaux (plus de vert). */
+.call-btn--accept {
+  color: var(--bordeaux-dark);
+  background: var(--beige);
+}
+
+/* Logo de l'application */
+.brand-logo {
+  display: block;
+  flex: none;
+}
+.chat-empty__logo {
+  width: 120px;
+  height: auto;
+  margin: 0 auto 8px;
+}
+
+/* Pages Connexion / Inscription : lien « S'inscrire » / « Se connecter » aux couleurs de la charte. */
+.auth-footer a {
+  font-weight: 600;
+  color: var(--bordeaux);
+}
+.auth-footer a:hover {
+  color: var(--bordeaux-dark);
 }

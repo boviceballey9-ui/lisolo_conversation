@@ -1,16 +1,33 @@
-# WhatsApp Clone
+<p align="center"><img src="frontend/public/logo-lisolo.svg" alt="Lisolo" width="320"></p>
+
+# Lisolo
 
 **Français** · [English](README.en.md)
 
 [![Tests backend](https://github.com/boviceballey9-ui/lisolo_conversation/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/boviceballey9-ui/lisolo_conversation/actions/workflows/backend-tests.yml)
-[![Licence MIT](https://img.shields.io/badge/licence-MIT-green.svg)](LICENSE)
+[![Licence MIT](https://img.shields.io/badge/licence-MIT-7B1E2B.svg)](LICENSE)
 ![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 
-Une messagerie inspirée de WhatsApp, construite de zéro pour **apprendre** tout ce qu'il y a derrière une application de ce type : temps réel, accusés de lecture, groupes, envoi de fichiers, appels audio et vidéo en WebRTC, et déploiement HTTPS derrière un reverse proxy.
+**Lisolo** est une messagerie construite de zéro pour **apprendre** tout ce qu'il y a derrière ce genre d'application (dans l'esprit de WhatsApp) : temps réel, accusés de lecture, groupes, envoi de fichiers, appels audio et vidéo en WebRTC, notifications push et déploiement HTTPS derrière un reverse proxy.
 
-Le projet a été mené en 10 étapes, chacune testée et commitée séparément.
+Le projet a été mené en 12 étapes, chacune testée et commitée séparément.
+
+## Pourquoi « Lisolo » ?
+
+En **lingala**, langue parlée en République démocratique du Congo et en République du Congo, *lisolo* signifie **« conversation, discussion »**. Le nom dit simplement ce que fait l'application : faire discuter les gens. Le logo reprend l'idée : deux bulles qui se répondent.
+
+## Charte graphique
+
+| Couleur | Rôle |
+|---|---|
+| ![#7B1E2B](https://img.shields.io/badge/-%237B1E2B-7B1E2B?style=flat-square) | **Bordeaux** : bulles envoyées, boutons, liens, accents |
+| ![#5A1520](https://img.shields.io/badge/-%235A1520-5A1520?style=flat-square) | **Bordeaux foncé** : titres, nom des auteurs, écrans d'appel |
+| ![#F3E6D3](https://img.shields.io/badge/-%23F3E6D3-F3E6D3?style=flat-square) | **Beige clair** : fond des discussions, texte sur bordeaux |
+| ![#E8D5BC](https://img.shields.io/badge/-%23E8D5BC-E8D5BC?style=flat-square) | **Beige moyen** : bulles reçues |
+
+Contraste vérifié **WCAG AA** pour chaque association utilisée : 25 paires, par exemple 8,3:1 pour le texte des bulles envoyées et 11,5:1 pour celui des bulles reçues. La vérification se relance avec `cd frontend ; npm run check:contrast`. Les couleurs ne sont définies qu'à un seul endroit : les variables CSS de `:root`.
 
 ![Discussion avec photo, message vocal, document et trace d'appel](docs/screenshots/chat.png)
 

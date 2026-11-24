@@ -1,4 +1,4 @@
-// Schéma de la base de données du clone WhatsApp.
+// Schéma de la base de données de Lisolo.
 // L'URL de connexion est définie dans prisma.config.ts (Prisma 7+).
 // Convention : modèles en PascalCase côté TypeScript, tables/colonnes en snake_case en SQL.
 
@@ -73,7 +73,7 @@ model User {
   passwordHash String    @map("password_hash") // hash bcrypt, jamais le mot de passe en clair
   name         String
   avatarId     String?   @map("avatar_id") @db.Uuid
-  about        String    @default("Salut ! J'utilise WhatsApp Clone.")
+  about        String    @default("Salut ! J'utilise Lisolo.")
   lastSeenAt   DateTime? @map("last_seen_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")

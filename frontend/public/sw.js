@@ -10,10 +10,10 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch {
-    data = { title: "WhatsApp Clone", body: event.data ? event.data.text() : "" };
+    data = { title: "Lisolo", body: event.data ? event.data.text() : "" };
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || "WhatsApp Clone", {
+    self.registration.showNotification(data.title || "Lisolo", {
       body: data.body || "Nouveau message",
       icon: "/icon-192.png",
       badge: "/badge-72.png",

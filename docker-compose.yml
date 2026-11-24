@@ -1,4 +1,4 @@
-# Infrastructure locale du clone WhatsApp.
+# Infrastructure locale de Lisolo.
 # Les valeurs ${...} viennent du fichier .env à la racine (copie de .env.example).
 #
 # Point d'entrée UNIQUE depuis le réseau : nginx (443, et 80 qui redirige vers 443).

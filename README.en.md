@@ -1,16 +1,33 @@
-# WhatsApp Clone
+<p align="center"><img src="frontend/public/logo-lisolo.svg" alt="Lisolo" width="320"></p>
+
+# Lisolo
 
 [Français](README.md) · **English**
 
 [![Backend tests](https://github.com/boviceballey9-ui/lisolo_conversation/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/boviceballey9-ui/lisolo_conversation/actions/workflows/backend-tests.yml)
-[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![MIT License](https://img.shields.io/badge/license-MIT-7B1E2B.svg)](LICENSE)
 ![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 
-A WhatsApp-inspired messaging app, built from scratch to **learn** everything behind this kind of product: real-time messaging, read receipts, groups, file uploads, WebRTC audio and video calls, and HTTPS deployment behind a reverse proxy.
+**Lisolo** is a messaging app built from scratch to **learn** everything behind this kind of product (in the spirit of WhatsApp): real-time messaging, read receipts, groups, file uploads, WebRTC audio and video calls, push notifications, and HTTPS deployment behind a reverse proxy.
 
-The project was built in 10 steps, each one tested and committed separately. The user interface is in French.
+The project was built in 12 steps, each one tested and committed separately.
+
+## Why "Lisolo"?
+
+In **Lingala**, a language spoken in the Democratic Republic of the Congo and the Republic of the Congo, *lisolo* means **"conversation, discussion"**. The name simply says what the app does: get people talking. The logo carries the same idea: two speech bubbles answering each other.
+
+## Visual identity
+
+| Color | Role |
+|---|---|
+| ![#7B1E2B](https://img.shields.io/badge/-%237B1E2B-7B1E2B?style=flat-square) | **Burgundy**: sent bubbles, buttons, links, accents |
+| ![#5A1520](https://img.shields.io/badge/-%235A1520-5A1520?style=flat-square) | **Dark burgundy**: titles, author names, call screens |
+| ![#F3E6D3](https://img.shields.io/badge/-%23F3E6D3-F3E6D3?style=flat-square) | **Light beige**: chat background, text on burgundy |
+| ![#E8D5BC](https://img.shields.io/badge/-%23E8D5BC-E8D5BC?style=flat-square) | **Medium beige**: received bubbles |
+
+Contrast is checked against **WCAG AA** for every color pair in use: 25 pairs, for example 8.3:1 for sent-bubble text and 11.5:1 for received-bubble text. Run the check again with `cd frontend ; npm run check:contrast`. Colors are defined in a single place: the CSS variables in `:root`. The user interface is in French.
 
 ![Chat with a photo, a voice message, a document and a call log](docs/screenshots/chat.png)
 

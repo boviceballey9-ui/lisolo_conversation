@@ -1,12 +1,13 @@
 {
-  "name": "whatsapp-frontend",
+  "name": "lisolo-frontend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:contrast": "node scripts/check-contrast.mjs"
   },
   "dependencies": {
     "peerjs": "1.5.5",

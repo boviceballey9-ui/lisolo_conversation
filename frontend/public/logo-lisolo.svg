@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 356 100" role="img" aria-label="Lisolo">
+  <!-- Logo + nom. Le mot « Lisolo » est dessiné en traits (pas de police) : rendu identique partout. -->
+  <g>
+    <rect x="40" y="6" width="74" height="54" rx="24" fill="#E8D5BC"/>
+    <path d="M94 56 L110 76 L80 60 Z" fill="#E8D5BC"/>
+    <rect x="6" y="30" width="76" height="54" rx="24" fill="#7B1E2B"/>
+    <path d="M24 80 L10 96 L40 84 Z" fill="#7B1E2B"/>
+    <circle cx="28" cy="57" r="5" fill="#F3E6D3"/>
+    <circle cx="44" cy="57" r="5" fill="#F3E6D3"/>
+    <circle cx="60" cy="57" r="5" fill="#F3E6D3"/>
+  </g>
+  <g fill="none" stroke="#5A1520" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <!-- L -->
+    <path d="M138 24 V80 H170"/>
+    <!-- i -->
+    <path d="M188 50 V80"/>
+    <!-- s -->
+    <path d="M232 54 C228 49 221 47 215 48 C208 49 205 54 207 58 C209 63 220 63 226 65 C233 67 234 74 230 78 C225 82 214 82 207 76"/>
+    <!-- o -->
+    <circle cx="262" cy="64" r="16"/>
+    <!-- l -->
+    <path d="M296 22 V80"/>
+    <!-- o -->
+    <circle cx="328" cy="64" r="16"/>
+  </g>
+  <!-- point du i -->
+  <circle cx="188" cy="30" r="6.5" fill="#5A1520"/>
+</svg>

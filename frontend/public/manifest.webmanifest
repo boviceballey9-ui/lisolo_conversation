@@ -1,16 +1,17 @@
 {
-  "name": "WhatsApp Clone",
-  "short_name": "WA Clone",
-  "description": "Messagerie temps réel : discussions, groupes, médias et appels.",
+  "name": "Lisolo",
+  "short_name": "Lisolo",
+  "description": "Lisolo — « conversation » en lingala : messagerie temps réel, groupes, médias et appels.",
   "lang": "fr",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f0f2f5",
-  "theme_color": "#008069",
+  "background_color": "#F3E6D3",
+  "theme_color": "#7B1E2B",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
