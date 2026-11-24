@@ -1,0 +1,68 @@
+# Infrastructure locale du clone WhatsApp.
+# Les valeurs ${...} viennent du fichier .env à la racine (copie de .env.example).
+
+services:
+  # Base de données relationnelle : utilisateurs, conversations, messages...
+  postgres:
+    image: postgres:16-alpine
+    container_name: wa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432" # port Windows : port interne du conteneur
+    volumes:
+      - pgdata:/var/lib/postgresql/data # volume persistant : les données survivent aux redémarrages
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Stockage objet compatible S3 : photos, vidéos, notes vocales, documents.
+  minio:
+    # minio/minio a été retiré de Docker Hub : on utilise l'image Chainguard.
+    # Son entrypoint est /usr/bin/minio, donc "command" ne contient que les arguments.
+    # Elle tourne en utilisateur non-root 65532 : on utilise un volume nommé (pas un dossier local).
+    image: cgr.dev/chainguard/minio:latest
+    container_name: wa-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000" # API S3 (utilisée par le backend)
+      - "9001:9001" # Console web d'administration
+    volumes:
+      - miniodata:/data
+
+  # Serveur STUN/TURN pour les appels audio/vidéo WebRTC.
+  coturn:
+    image: coturn/coturn:latest
+    container_name: wa-coturn
+    restart: unless-stopped
+    # Docker Desktop (Windows/macOS) ne supporte pas bien network_mode: host,
+    # on publie donc explicitement le port 3478 et une petite plage de relais.
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49160-49200:49160-49200/udp"
+    # Pas de turnserver.conf : toute la configuration est passée en arguments.
+    # (Ne pas ajouter "-n" : l'entrypoint de l'image le transforme en argument vide.)
+    command:
+      - --listening-port=3478
+      - --lt-cred-mech # authentification par identifiant/mot de passe
+      - --user=${TURN_USER}:${TURN_PASSWORD}
+      - --realm=${TURN_REALM}
+      - --external-ip=${TURN_EXTERNAL_IP}
+      - --min-port=49160
+      - --max-port=49200
+      - --fingerprint
+      - --log-file=stdout
+
+volumes:
+  pgdata:
+  miniodata:
