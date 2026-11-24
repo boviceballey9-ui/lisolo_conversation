@@ -47,7 +47,7 @@ jobs:
         working-directory: backend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # L'image Chainguard de MinIO a besoin d'arguments (« server /data ») : impossible avec
       # « services: » dans GitHub Actions, on la lance donc à la main.
@@ -63,7 +63,7 @@ jobs:
           docker logs minio
           exit 1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
