@@ -48,14 +48,15 @@ enum DeliveryStatus {
 // ---------- Modèles ----------
 
 model User {
-  id         String    @id @default(uuid()) @db.Uuid
-  phone      String    @unique // identifiant de connexion, format E.164 (+33612345678)
-  name       String
-  avatarId   String?   @map("avatar_id") @db.Uuid
-  about      String    @default("Salut ! J'utilise WhatsApp Clone.")
-  lastSeenAt DateTime? @map("last_seen_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  id           String    @id @default(uuid()) @db.Uuid
+  phone        String    @unique // identifiant de connexion, format E.164 (+33612345678)
+  passwordHash String    @map("password_hash") // hash bcrypt, jamais le mot de passe en clair
+  name         String
+  avatarId     String?   @map("avatar_id") @db.Uuid
+  about        String    @default("Salut ! J'utilise WhatsApp Clone.")
+  lastSeenAt   DateTime? @map("last_seen_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   avatar        Media?          @relation("UserAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
   participants  Participant[]

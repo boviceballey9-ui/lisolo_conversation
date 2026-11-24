@@ -44,8 +44,17 @@ npm run dev
 Tester la route de santé :
 
 ```powershell
-Invoke-RestMethod http://localhost:4000/health
+Invoke-RestMethod http://localhost:4000/api/health
 ```
+
+## API
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| POST | `/api/auth/register` | Inscription `{ phone, name, password }` → `{ user, accessToken, refreshToken }` |
+| POST | `/api/auth/login` | Connexion `{ phone, password }` → `{ user, accessToken, refreshToken }` |
+| POST | `/api/auth/refresh` | `{ refreshToken }` → `{ accessToken }` |
+| GET | `/api/users/me` | Mon profil (en-tête `Authorization: Bearer <accessToken>`) |
 
 Console MinIO : http://localhost:9001 (identifiants `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` du `.env`).
 
@@ -59,7 +68,24 @@ npm run db:migrate -- --name description_du_changement
 npm run db:studio     # explorer les données dans le navigateur
 ```
 
+## Tests
+
+```powershell
+cd backend
+npm test
+```
+
+Les tests utilisent une base séparée (`TEST_DATABASE_URL`, créée et migrée automatiquement) : vos données de développement ne sont jamais touchées.
+
+## Pages
+
+- http://localhost:5173/register : inscription
+- http://localhost:5173/login : connexion
+- http://localhost:5173/ : profil (protégé)
+
 ## Notes
+
+- **PowerShell 5.1 et les accents** : `Get-Content`/`Set-Content` lisent les fichiers UTF-8 sans BOM comme de l'ANSI et abîment les accents. Modifiez le `.env` avec VS Code plutôt qu'avec ces commandes.
 
 - **Port 5433** : le conteneur PostgreSQL est exposé sur 5433 pour ne pas entrer en conflit avec un PostgreSQL déjà installé sous Windows (port 5432). Modifiable via `POSTGRES_PORT` dans `.env`.
 - **MinIO** : l'image `minio/minio` a été retirée de Docker Hub. On utilise l'image Chainguard, qui tourne en utilisateur non-root (UID 65532). Gardez un **volume nommé** (`miniodata`) : un dossier Windows monté en bind provoquerait des erreurs de permissions.

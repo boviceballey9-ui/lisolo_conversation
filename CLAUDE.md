@@ -20,7 +20,7 @@ npm run build    # tsc -> dist/
 npm start        # node dist/index.js
 npm run db:migrate -- --name <nom>   # crée + applique une migration après modif de prisma/schema.prisma
 npm run db:status                    # état des migrations
-npm run db:generate                  # régénère le client (aussi lancé par postinstall)
+npm run db:generate                  # régénère le client (aussi lancé par postinstall et après db:migrate)
 npm run db:studio                    # interface web pour explorer la base
 
 # frontend/ (port 5173)
@@ -28,7 +28,16 @@ npm run dev
 npm run build    # tsc (vérification de types, noEmit) puis vite build
 ```
 
-Pas encore de tests ni de linter configurés.
+Tests backend (Vitest + Supertest, contre une vraie base PostgreSQL `whatsapp_test`) — conteneur `wa-postgres` démarré requis :
+
+```powershell
+cd backend
+npm test                                              # toute la suite
+npx vitest run src/__tests__/auth.test.ts -t "refresh"   # un fichier / les tests dont le nom contient "refresh"
+npm run test:watch
+```
+
+Pas de linter configuré.
 
 ## Langue
 Réponds toujours en français.
@@ -37,7 +46,24 @@ Réponds toujours en français.
 
 - Monorepo sans workspace npm : `backend/` et `frontend/` ont chacun leur `package.json` et `node_modules`.
 - **Configuration unique** : un seul `.env` à la racine. Le backend le charge explicitement depuis `backend/src/index.ts` via un chemin relatif au fichier (`../../.env`, valable depuis `src/` avec tsx et depuis `dist/` après build). Docker Compose interpole les mêmes variables dans `docker-compose.yml`.
-- **Frontend → backend** : le frontend appelle `/api/...` ; le proxy Vite (`frontend/vite.config.ts`) retire le préfixe `/api` et redirige vers `http://localhost:4000`. Une route backend `/health` est donc appelée `/api/health` côté React.
+- **Frontend → backend** : toutes les routes du backend sont préfixées par `/api` (`/api/auth/*`, `/api/users/*`, `/api/health` ; `/health` reste en alias). Le proxy Vite (`frontend/vite.config.ts`) transmet `/api/...` **sans réécriture** vers `http://localhost:4000`.
+- **`src/app.ts` vs `src/index.ts`** : `createApp()` construit l'app Express sans `listen` (utilisée telle quelle par Supertest) ; `index.ts` charge l'env puis écoute. Nouveau routeur → le monter dans `createApp()`, avant `errorHandler`.
+- Express 4 : les erreurs des handlers `async` ne sont pas capturées automatiquement, chaque handler fait `try/catch` + `next(err)`.
+
+## Authentification
+
+- JWT HS256 signés avec **deux secrets distincts** (`JWT_ACCESS_SECRET` 15 min, `JWT_REFRESH_SECRET` 7 j) + claim `type: "access" | "refresh"` vérifié (`src/auth/tokens.ts`). `sub` = id utilisateur.
+- Routes protégées : middleware `requireAuth` (`src/middleware/requireAuth.ts`) → `req.userId`. Validation des corps : `validateBody(schemaZod)` (400 avec `details` par champ).
+- Ne jamais renvoyer `passwordHash` : utiliser `publicUserSelect` (`src/routes/users.ts`) dans les `select` Prisma.
+- Refresh token **sans état** (non stocké en base) : pas de révocation possible côté serveur pour l'instant.
+- `src/config.ts` lève une erreur au démarrage si un secret manque.
+- Frontend : `frontend/src/api.ts` (`apiFetch`) ajoute le Bearer et, sur 401, appelle `/api/auth/refresh` une fois puis rejoue la requête. Tokens dans `localStorage`.
+
+## Tests
+
+- `test/globalSetup.ts` crée la base `whatsapp_test` si besoin et y applique `prisma migrate deploy` ; `test/setup.ts` redirige `DATABASE_URL` vers `TEST_DATABASE_URL` (garde-fou : refuse si identique à la base de dev) et fait un `TRUNCATE` de toutes les tables avant **chaque** test. Ajouter une table → l'ajouter à ce `TRUNCATE`.
+- `BCRYPT_ROUNDS=4` en test. Fichiers en série (`fileParallelism: false`).
+- `src/__tests__/` est exclu du build `tsc`.
 - Backend en ESM (`"type": "module"`, `module: NodeNext`) : les imports relatifs TypeScript doivent porter l'extension `.js`.
 - **Chargement du `.env`** : `backend/src/env.ts` doit rester le **premier import** de `index.ts`. En ESM les imports sont évalués avant le code, donc `db.ts` lirait `DATABASE_URL` trop tôt sinon.
 
@@ -46,6 +72,7 @@ Réponds toujours en français.
 - **Prisma 7.10.1, versions épinglées exactement** (`prisma`, `@prisma/client`, `@prisma/adapter-pg`). Le dist-tag npm `latest` de `prisma` pointe vers une `8.0.0-rc` : ne jamais faire `npm install prisma` sans version. Les trois paquets doivent avoir la même version.
 - Prisma 7 : l'URL de connexion n'est pas dans `schema.prisma` mais dans `backend/prisma.config.ts`, qui charge le `.env` **racine**. Le client est instancié avec l'adaptateur `PrismaPg` dans `backend/src/db.ts` (singleton `prisma` à réutiliser partout).
 - Client généré dans `backend/src/generated/prisma/` (ignoré par Git, importer depuis `./generated/prisma/client.js`).
+- **Prisma 7 : `prisma migrate dev` ne régénère plus le client.** Le script `postdb:migrate` le fait après `npm run db:migrate` ; si on lance `npx prisma migrate dev` directement, enchaîner `npx prisma generate` (sinon erreurs « Unknown argument » sur les nouveaux champs).
 - Conventions du schéma : modèles PascalCase / champs camelCase côté TS, tables et colonnes snake_case en SQL (`@@map`/`@map`), ids UUID. Les fichiers (photo de profil, photo de groupe, pièces jointes) référencent la table `media` (clé d'objet MinIO), jamais une URL.
 - Changer `POSTGRES_PASSWORD` dans `.env` ne modifie pas une base déjà initialisée (l'image Postgres ne l'applique qu'à la création du volume) : faire un `ALTER USER whatsapp WITH PASSWORD ...` dans le conteneur, ou `docker compose down -v` si les données peuvent être perdues.
 
