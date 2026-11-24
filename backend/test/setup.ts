@@ -8,7 +8,7 @@ loadTestEnv();
 const { prisma } = await import("../src/db.js");
 
 const TRUNCATE =
-  'TRUNCATE TABLE "message_status", "messages", "participants", "conversations", "users", "media", "calls" CASCADE';
+  'TRUNCATE TABLE "message_status", "messages", "participants", "conversations", "users", "media", "calls", "push_subscriptions" CASCADE';
 
 // Interblocage PostgreSQL (40P01) : la transaction a été annulée, on peut la rejouer.
 const isDeadlock = (err: unknown) => /40P01|deadlock detected/.test(JSON.stringify(err, Object.getOwnPropertyNames(err ?? {})));

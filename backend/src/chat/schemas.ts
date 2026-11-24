@@ -61,6 +61,23 @@ export const callInviteSchema = z.object({
 
 export const callIdSchema = z.object({ callId: z.uuid() });
 
+// --- Notifications push ---
+
+// Abonnement tel que le renvoie PushSubscription.toJSON() dans le navigateur.
+// L'endpoint doit être en HTTPS : c'est l'adresse d'un service push (Google, Mozilla, Apple…).
+export const pushSubscriptionSchema = z.object({
+  endpoint: z
+    .url()
+    .max(2048)
+    .refine((u) => u.startsWith("https://"), "L'adresse du service push doit être en HTTPS"),
+  keys: z.object({
+    p256dh: z.string().min(1).max(256),
+    auth: z.string().min(1).max(64),
+  }),
+});
+
+export const pushUnsubscribeSchema = z.object({ endpoint: z.string().min(1).max(2048) });
+
 // --- Médias ---
 
 export const uploadUrlSchema = z.object({

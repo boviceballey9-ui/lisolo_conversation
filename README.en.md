@@ -33,6 +33,7 @@ The project was built in 10 steps, each one tested and committed separately. The
 - **Groups**: admin and member roles, adding and removing members, promoting admins, leaving (the oldest member takes over), system messages.
 - **Media**: photos, videos, documents, **voice messages** (hold-to-record button), profile pictures and group photos. Files go straight from the browser to storage, with a progress bar.
 - **1-to-1 audio and video calls** over WebRTC: ringing, busy, missed calls, mute mic or camera, call history in the chat.
+- **Push notifications** (Web Push): a message arrives while no tab is open, and the phone or PC shows "Alice: Tu es dispo samedi ?". Clicking it opens the right conversation. A local notification is shown when the tab is merely in the background.
 - **HTTPS** behind Nginx, testable from a phone on the same Wi-Fi.
 
 ## Architecture
@@ -87,8 +88,9 @@ sequenceDiagram
 | **Data** | PostgreSQL 16, Prisma 7 |
 | **Files** | MinIO (S3-compatible), AWS SDK v3, presigned URLs |
 | **Calls** | WebRTC, PeerJS, coturn (STUN/TURN, short-lived credentials) |
+| **Notifications** | Web Push (service worker, VAPID, RFC 8291 encryption), `web-push` |
 | **Infrastructure** | Docker Compose, Nginx (HTTPS, HTTP/2, WebSocket), mkcert |
-| **Quality** | Vitest + Supertest: 131 tests against a real database and a real MinIO, GitHub Actions |
+| **Quality** | Vitest + Supertest: 143 tests against a real database and a real MinIO, GitHub Actions |
 
 ## Getting started
 
@@ -102,7 +104,7 @@ cd lisolo_conversation
 Copy-Item .env.example .env
 ```
 
-In `.env`, replace the `change_me` and `remplacez_moi…` values: PostgreSQL and MinIO passwords, JWT secrets, `TURN_SECRET`. To generate a random value:
+In `.env`, replace the `change_me` and `remplacez_moi…` values: PostgreSQL and MinIO passwords, JWT secrets, `TURN_SECRET`. For push notifications, generate VAPID keys (`cd backend ; npm install ; npx web-push generate-vapid-keys`) and put them in `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`. To generate a random value:
 
 ```powershell
 [Convert]::ToBase64String((1..48 | ForEach-Object { Get-Random -Maximum 256 }))
@@ -148,7 +150,7 @@ cd backend; npx prisma migrate deploy; npm run build; npm start
 
 ```powershell
 cd backend
-npm test        # 131 tests, on a dedicated database and bucket, created and cleaned automatically
+npm test        # 143 tests, on a dedicated database and bucket, created and cleaned automatically
 ```
 
 All routes and Socket.io events are listed in **[docs/api.md](docs/api.md)** (in French).
@@ -157,6 +159,7 @@ All routes and Socket.io events are listed in **[docs/api.md](docs/api.md)** (in
 
 - **Files never go through the backend.** The backend checks the file type and size, then signs a presigned URL valid for 5 minutes. Both type *and* size are part of the signature, so MinIO itself rejects any other upload. After the upload, the backend checks the actual object again before saving it.
 - **Two channels for calls.** Socket.io handles ringing: notifying every tab, detecting busy or offline users, saving the call history. PeerJS is only used once the call is picked up, to set up the WebRTC connection. Audio and video travel encrypted, directly between browsers.
+- **Push notifications without duplicates**: the server only sends a push to recipients with no open tab. If a tab is in the background, it shows a local notification itself. The content is encrypted for the subscribed browser only: the push service (Google, Mozilla, Microsoft) only carries unreadable bytes, and a test proves it by decrypting the request.
 - **Short-lived TURN credentials** ("TURN REST API"): the backend derives them with an HMAC, using a secret shared with coturn. No fixed password ever reaches the browser.
 - **Permissions enforced on the server**, with tests proving it without any UI: 404 instead of 403 so the existence of a group or a file is never revealed.
 - **Concurrency**: group changes run in a transaction with `SELECT … FOR UPDATE`. Without this lock, two admins leaving at the same time leave a group with no admin, and a test demonstrates it.

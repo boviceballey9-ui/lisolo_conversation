@@ -29,6 +29,18 @@ export const config = {
   get publicOrigins(): string[] {
     return this.corsOrigins.filter((o) => o.startsWith("https://"));
   },
+  // Notifications push (Web Push + VAPID). Sans clés : push désactivé, le reste fonctionne.
+  get push() {
+    const publicKey = process.env.VAPID_PUBLIC_KEY || "";
+    const privateKey = process.env.VAPID_PRIVATE_KEY || "";
+    return {
+      enabled: Boolean(publicKey && privateKey),
+      publicKey,
+      privateKey,
+      // Contact de l'expéditeur, transmis aux services push (URL https: ou mailto:).
+      subject: process.env.VAPID_SUBJECT || "https://github.com/boviceballey9-ui/lisolo_conversation",
+    };
+  },
   turn: {
     host: process.env.TURN_HOST || "localhost", // tel que le NAVIGATEUR le joint
     port: 3478,

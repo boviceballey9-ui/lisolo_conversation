@@ -33,6 +33,7 @@ Le projet a été mené en 10 étapes, chacune testée et commitée séparément
 - **Groupes** : rôles admin et membre, ajout, retrait, nomination d'admins, départ (le plus ancien membre prend le relais), messages système.
 - **Médias** : photos, vidéos, documents, **messages vocaux** (bouton micro maintenu), photo de profil et photo de groupe. Les fichiers vont directement du navigateur au stockage, avec une barre de progression.
 - **Appels audio et vidéo 1-à-1** en WebRTC : sonnerie, occupé, appel manqué, coupure du micro ou de la caméra, historique des appels dans la conversation.
+- **Notifications push** (Web Push) : un message arrive alors qu'aucun onglet n'est ouvert, et le téléphone ou le PC affiche « Alice : Tu es dispo samedi ? ». Un clic ouvre la bonne conversation. Notification locale si l'onglet est simplement en arrière-plan.
 - **HTTPS** derrière Nginx, testable depuis un téléphone sur le Wi-Fi.
 
 ## Architecture
@@ -87,8 +88,9 @@ sequenceDiagram
 | **Données** | PostgreSQL 16, Prisma 7 |
 | **Fichiers** | MinIO (compatible S3), SDK AWS v3, URL présignées |
 | **Appels** | WebRTC, PeerJS, coturn (STUN/TURN, identifiants temporaires) |
+| **Notifications** | Web Push (service worker, VAPID, chiffrement RFC 8291), `web-push` |
 | **Infrastructure** | Docker Compose, Nginx (HTTPS, HTTP/2, WebSocket), mkcert |
-| **Qualité** | Vitest + Supertest : 131 tests sur une vraie base et un vrai MinIO, GitHub Actions |
+| **Qualité** | Vitest + Supertest : 143 tests sur une vraie base et un vrai MinIO, GitHub Actions |
 
 ## Installation
 
@@ -102,7 +104,7 @@ cd lisolo_conversation
 Copy-Item .env.example .env
 ```
 
-Dans `.env`, remplacez les valeurs `change_me` et `remplacez_moi…` : mots de passe PostgreSQL et MinIO, secrets JWT, `TURN_SECRET`. Une valeur aléatoire s'obtient avec :
+Dans `.env`, remplacez les valeurs `change_me` et `remplacez_moi…` : mots de passe PostgreSQL et MinIO, secrets JWT, `TURN_SECRET`. Pour les notifications push, générez les clés VAPID (`cd backend ; npm install ; npx web-push generate-vapid-keys`) et reportez-les dans `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`. Une valeur aléatoire s'obtient avec :
 
 ```powershell
 [Convert]::ToBase64String((1..48 | ForEach-Object { Get-Random -Maximum 256 }))
@@ -148,7 +150,7 @@ cd backend; npx prisma migrate deploy; npm run build; npm start
 
 ```powershell
 cd backend
-npm test        # 131 tests, sur une base et un bucket dédiés, créés et vidés automatiquement
+npm test        # 143 tests, sur une base et un bucket dédiés, créés et vidés automatiquement
 ```
 
 La liste des routes et des événements Socket.io est dans **[docs/api.md](docs/api.md)**.
@@ -157,6 +159,7 @@ La liste des routes et des événements Socket.io est dans **[docs/api.md](docs/
 
 - **Le fichier ne passe jamais par le backend.** Le backend vérifie le type et la taille, puis signe une URL présignée valable 5 minutes. Type *et* taille font partie de la signature : MinIO refuse lui-même tout autre envoi. Après l'envoi, le backend revérifie l'objet réel avant de l'enregistrer.
 - **Deux canaux pour les appels.** Socket.io gère la sonnerie : prévenir tous les onglets, détecter l'occupé ou l'absence, enregistrer l'historique. PeerJS ne sert qu'après le décroché, pour établir la connexion WebRTC. Le son et l'image vont de navigateur à navigateur, chiffrés.
+- **Notifications push sans doublon** : le serveur n'envoie un push qu'aux destinataires sans aucun onglet ouvert. Si un onglet est en arrière-plan, c'est lui qui affiche une notification locale. Le contenu est chiffré pour le seul navigateur abonné : le service push (Google, Mozilla, Microsoft) ne transporte que des octets illisibles, et un test le prouve en déchiffrant la requête.
 - **Identifiants TURN temporaires** (« TURN REST API ») : le backend les fabrique par HMAC avec un secret partagé avec coturn. Aucun mot de passe fixe n'arrive dans le navigateur.
 - **Permissions vérifiées côté serveur**, avec des tests qui le prouvent sans interface : 404 plutôt que 403 pour ne pas révéler l'existence d'un groupe ou d'un média.
 - **Concurrence** : les changements d'un groupe passent dans une transaction avec `SELECT … FOR UPDATE`. Sans ce verrou, deux admins qui partent en même temps laissent un groupe sans admin, et un test le démontre.

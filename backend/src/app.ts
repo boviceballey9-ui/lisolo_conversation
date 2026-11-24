@@ -8,6 +8,7 @@ import { callsRouter } from "./routes/calls.js";
 import { conversationsRouter } from "./routes/conversations.js";
 import { groupsRouter } from "./routes/groups.js";
 import { mediaRouter } from "./routes/media.js";
+import { pushRouter } from "./routes/push.js";
 import { usersRouter } from "./routes/users.js";
 
 // Construit l'application Express SANS démarrer le serveur :
@@ -45,6 +46,7 @@ export function createApp() {
   app.use("/api/groups", groupsRouter);
   app.use("/api/media", mediaRouter);
   app.use("/api/calls", callsRouter);
+  app.use("/api/push", pushRouter);
 
   app.use(errorHandler);
   return app;

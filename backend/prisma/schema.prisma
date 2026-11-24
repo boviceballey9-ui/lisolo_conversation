@@ -78,13 +78,14 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
-  avatar        Media?          @relation("UserAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
-  participants  Participant[]
-  sentMessages  Message[]       @relation("MessageSender")
-  messageStatus MessageStatus[]
-  uploads       Media[]         @relation("MediaUploads")
-  callsMade     Call[]          @relation("CallCaller")
-  callsReceived Call[]          @relation("CallCallee")
+  avatar            Media?             @relation("UserAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
+  participants      Participant[]
+  sentMessages      Message[]          @relation("MessageSender")
+  messageStatus     MessageStatus[]
+  uploads           Media[]            @relation("MediaUploads")
+  callsMade         Call[]             @relation("CallCaller")
+  callsReceived     Call[]             @relation("CallCallee")
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
 }
@@ -150,8 +151,8 @@ model Message {
 
 // Statut de livraison d'un message pour CHAQUE destinataire (utile dans les groupes).
 model MessageStatus {
-  messageId String         @map("message_id") @db.Uuid
-  userId    String         @map("user_id") @db.Uuid // le destinataire
+  messageId   String         @map("message_id") @db.Uuid
+  userId      String         @map("user_id") @db.Uuid // le destinataire
   status      DeliveryStatus @default(SENT)
   deliveredAt DateTime?      @map("delivered_at") // arrivé sur l'appareil (« Distribué »)
   readAt      DateTime?      @map("read_at") // lu (« Lu par » dans « Infos du message »)
@@ -167,7 +168,7 @@ model MessageStatus {
 
 // Métadonnées d'un fichier stocké dans MinIO (le fichier lui-même est dans MinIO).
 model Media {
-  id        String   @id @default(uuid()) @db.Uuid
+  id         String   @id @default(uuid()) @db.Uuid
   objectKey  String   @unique @map("object_key") // chemin de l'objet dans le bucket MinIO : users/<uploaderId>/<uuid>
   mimeType   String   @map("mime_type") // ex. image/jpeg, audio/ogg
   size       Int // taille en octets (Int : jusqu'à ~2 Go)
@@ -206,4 +207,22 @@ model Call {
   @@index([callerId])
   @@index([calleeId])
   @@map("calls")
+}
+
+// Abonnement aux notifications push d'un navigateur (Web Push, RFC 8030).
+// `endpoint` est l'adresse du service push du navigateur (Google, Mozilla, Apple…) ;
+// `p256dh` et `auth` sont les clés publiques du navigateur, qui servent à CHIFFRER le contenu
+// (RFC 8291) : le service push transporte la notification sans pouvoir la lire.
+model PushSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  endpoint  String   @unique // un navigateur = un endpoint
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }

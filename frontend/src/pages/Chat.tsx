@@ -20,11 +20,20 @@ import { GroupInfo } from "../components/GroupInfo";
 import { MessageInfo } from "../components/MessageInfo";
 import { NewChat } from "../components/NewChat";
 import { NewGroup } from "../components/NewGroup";
-import { formatLastSeen } from "../format";
+import { formatLastSeen, messagePreview } from "../format";
 import { kindOf, mimeOf, uploadFile } from "../media";
 import { CallScreen, IncomingCall } from "../calls/CallScreens";
 import { useCall } from "../calls/useCall";
 import { createSocket } from "../socket";
+import {
+  disablePush,
+  enablePush,
+  pushState,
+  registerServiceWorker,
+  showLocalNotification,
+  syncPushSubscription,
+  type PushState,
+} from "../push";
 
 // Messages chargés d'une conversation + curseur pour charger les plus anciens.
 interface Thread {
@@ -95,6 +104,8 @@ export default function Chat() {
   // Le socket, aussi en état (pas seulement en ref) : le hook d'appels doit savoir quand il change.
   const [socket, setSocket] = useState<Socket | null>(null);
   const call = useCall(socket, me);
+  // Notifications push : état pour ce navigateur (non supporté, refusé, désactivé, activé).
+  const [push, setPush] = useState<PushState>("unsupported");
   // Présence de mes contacts, et qui est en train d'écrire dans quelle conversation.
   const [presence, setPresence] = useState<Record<string, Presence>>({});
   const [typing, setTyping] = useState<Record<string, string[]>>({});
@@ -211,6 +222,20 @@ export default function Chat() {
           };
           return [updated, ...list.filter((c) => c.id !== conv.id)]; // remonte en haut de la liste
         });
+      }
+
+      // Onglet ouvert mais en arrière-plan : notification LOCALE (le serveur n'envoie de push
+      // qu'aux utilisateurs sans aucun onglet ouvert, donc pas de doublon).
+      if (!mine && !system && document.visibilityState === "hidden") {
+        const conv = conversationsRef.current.find((c) => c.id === message.conversationId);
+        const groupName = conv?.type === "GROUP" ? (conv.name ?? "Groupe") : null;
+        const text = messagePreview(message) || "Nouveau message";
+        showLocalNotification({
+          title: groupName ?? message.senderName,
+          body: groupName ? `${message.senderName} : ${text}` : text,
+          tag: `conversation-${message.conversationId}`,
+          conversationId: message.conversationId,
+        }).catch(() => {});
       }
 
       if (!mine && !system) {
@@ -343,6 +368,50 @@ export default function Chat() {
     setShowNewGroup(false);
     markRead(id);
     if (!threads[id]) await loadThread(id).catch(() => {});
+  };
+
+  // Ouverture d'une conversation depuis une notification :
+  // - clic quand l'application est déjà ouverte → message du service worker ;
+  // - clic quand elle était fermée → nouvelle fenêtre sur /?c=<id>.
+  const openRef = useRef(openConversation);
+  openRef.current = openConversation;
+  const conversationsLoaded = conversations.length > 0;
+  useEffect(() => {
+    if (!conversationsLoaded) return;
+    const fromUrl = new URLSearchParams(window.location.search).get("c");
+    if (fromUrl) {
+      window.history.replaceState(null, "", "/"); // ne pas rouvrir à chaque rechargement
+      if (conversationsRef.current.some((c) => c.id === fromUrl)) openRef.current(fromUrl);
+    }
+    const onMessage = (e: MessageEvent) => {
+      const id = e.data?.type === "open-conversation" ? e.data.conversationId : null;
+      if (id && conversationsRef.current.some((c) => c.id === id)) openRef.current(id);
+    };
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker?.removeEventListener("message", onMessage);
+  }, [conversationsLoaded]);
+
+  // Service worker + état des notifications ; abonnement existant rattaché à l'utilisateur connecté.
+  useEffect(() => {
+    if (!meId) return;
+    registerServiceWorker();
+    pushState().then(setPush);
+    syncPushSubscription().catch(() => {});
+  }, [meId]);
+
+  const togglePush = async () => {
+    try {
+      setPush(push === "on" ? await disablePush() : await enablePush());
+    } catch {
+      window.alert("Impossible de modifier les notifications (serveur ou service push injoignable)");
+    }
+  };
+
+  // Déconnexion : on se désabonne d'abord, pour que le prochain utilisateur de ce navigateur
+  // ne reçoive pas nos notifications.
+  const signOut = async () => {
+    await disablePush().catch(() => {});
+    goToLogin();
   };
 
   const onConversationStarted = (conversation: Conversation) => {
@@ -548,7 +617,22 @@ export default function Chat() {
           >
             Nouveau groupe
           </button>
-          <button type="button" className="btn" onClick={goToLogin}>
+          {push !== "unsupported" && (
+            <button
+              type="button"
+              className="btn"
+              onClick={togglePush}
+              disabled={push === "denied"}
+              title={
+                push === "denied"
+                  ? "Notifications bloquées : autorisez-les dans les réglages du site (icône à gauche de l'adresse)"
+                  : undefined
+              }
+            >
+              {push === "on" ? "🔔 Notifications activées" : push === "denied" ? "🔕 Notifications bloquées" : "🔔 Activer les notifications"}
+            </button>
+          )}
+          <button type="button" className="btn" onClick={signOut}>
             Déconnexion
           </button>
         </header>

@@ -16,6 +16,7 @@ import {
   type StatusUpdate,
 } from "./chat/service.js";
 import { createCallManager } from "./calls/socketCalls.js";
+import { notifyNewMessage, webPushSender, type PushSender } from "./push/service.js";
 import { groupRoom, userRoom } from "./rooms.js";
 import { handle } from "./socketHandle.js";
 
@@ -26,6 +27,8 @@ export interface SocketOptions {
   typingTimeoutMs?: number;
   // Délai de sonnerie avant « appel manqué ».
   callTimeoutMs?: number;
+  // Envoi des notifications push (remplacé dans les tests : aucun appel vers Google / Mozilla).
+  pushSender?: PushSender;
 }
 
 // État « en train d'écrire » d'un utilisateur dans une conversation.
@@ -37,7 +40,7 @@ interface TypingEntry {
 
 export function attachSocket(
   server: http.Server,
-  { typingTimeoutMs = 3000, callTimeoutMs = 30_000 }: SocketOptions = {},
+  { typingTimeoutMs = 3000, callTimeoutMs = 30_000, pushSender = webPushSender }: SocketOptions = {},
 ) {
   // Même liste d'origines que l'API REST (CORS_ORIGINS).
   const io = new Server(server, {
@@ -163,6 +166,13 @@ export function attachSocket(
           io.to(userRoom(recipientId)).emit("message:new", message);
         }
         socket.to(userRoom(userId)).emit("message:new", message); // mes autres onglets
+      }
+      // Destinataires sans AUCUN onglet ouvert : notification push (en tâche de fond, l'expéditeur
+      // n'attend pas). Ceux qui ont un onglet ouvert ont reçu message:new ; si l'onglet est en
+      // arrière-plan, c'est le navigateur qui affiche une notification locale.
+      const offline = recipientIds.filter((id) => !connections.has(id));
+      if (offline.length > 0) {
+        notifyNewMessage(message, conversationType, offline, pushSender).catch((err) => console.error(err));
       }
       return { message, clientId };
     });

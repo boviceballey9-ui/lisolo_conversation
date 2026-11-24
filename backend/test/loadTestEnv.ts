@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
+import webpush from "web-push";
 
 // Charge le .env racine puis redirige DATABASE_URL vers la base de TEST,
 // pour ne jamais toucher aux données de développement.
@@ -31,6 +32,13 @@ export function loadTestEnv(): string {
     throw new Error("MINIO_TEST_BUCKET doit être différent de MINIO_BUCKET (les tests vident le bucket)");
   }
   process.env.MINIO_BUCKET = testBucket;
+
+  // Notifications push : sans clés VAPID dans l'environnement (CI), on en génère des jetables.
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    const keys = webpush.generateVAPIDKeys();
+    process.env.VAPID_PUBLIC_KEY = keys.publicKey;
+    process.env.VAPID_PRIVATE_KEY = keys.privateKey;
+  }
 
   process.env.DATABASE_URL = testUrl;
   process.env.BCRYPT_ROUNDS = "4"; // hachage rapide en test

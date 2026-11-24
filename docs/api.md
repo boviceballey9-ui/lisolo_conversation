@@ -58,6 +58,16 @@ navigateur ──4. message:send { mediaId } ──▶ Socket.io
 
 Limites : images et messages vocaux 16 Mo, vidéos 64 Mo, documents 100 Mo.
 
+### Notifications push
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| GET | `/api/push/vapid-public-key` | Clé publique VAPID, à donner au service push du navigateur lors de l'abonnement |
+| POST | `/api/push/subscriptions` | `{ endpoint, keys: { p256dh, auth } }` (= `PushSubscription.toJSON()`) → enregistre l'abonnement de ce navigateur |
+| DELETE | `/api/push/subscriptions` | `{ endpoint }` → désabonnement (bouton, ou déconnexion) |
+
+Une notification n'est envoyée qu'aux destinataires **sans aucun onglet ouvert**. Elle est chiffrée pour le navigateur (RFC 8291) et signée avec la clé VAPID (RFC 8292). Contenu : `{ title, body, tag, url, conversationId }`.
+
 ### Appels
 
 | Méthode | Route | Rôle |

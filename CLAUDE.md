@@ -137,6 +137,25 @@ Réponds toujours en français.
   - access token dans l'URL WebSocket PeerJS (vérifié à la connexion uniquement) ;
   - pas de renégociation si la caméra est ajoutée en cours d'appel.
 
+## Notifications push (Web Push)
+
+- **Uniquement les nouveaux messages** (`message:send`), jamais les messages SYSTEM ni CALL. Push envoyé seulement aux destinataires **sans aucun socket** (`connections`, dans `socket.ts`), en tâche de fond (l'ack n'attend pas). Onglet ouvert mais caché : le **frontend** affiche une notification locale (`showLocalNotification` dans `Chat.tsx`). Pas de doublon.
+- Backend `src/push/service.ts` :
+  - `buildPayload` : `{ title, body, tag: "conversation-<id>", url: "/?c=<id>", conversationId }`. En privé, titre = expéditeur ; en groupe, titre = nom du groupe et corps = « auteur : texte ». Libellés 📷 / 🎥 / 🎤 / 📄, corps tronqué à 180 caractères.
+  - `sendPush` : un envoi par abonnement ; 404 ou 410 → abonnement supprimé.
+  - `pushRequestOptions` : VAPID, TTL 24 h, urgence haute.
+- `PushSender` est injectable : `attachSocket(server, { pushSender })`. Les tests utilisent un faux émetteur. Le vrai chiffrement est vérifié avec `webpush.generateRequestDetails` + `http_ece.decrypt` (dépendance de dev), sans réseau.
+- Table `push_subscriptions` (`endpoint` unique). L'**upsert par endpoint** fait suivre l'abonnement au compte connecté (navigateur partagé). Routes `/api/push` : `vapid-public-key`, `POST`/`DELETE subscriptions`. L'endpoint doit être en https.
+- Clés VAPID : `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (`npx web-push generate-vapid-keys`). `config.push` est un getter. Sans clés : push désactivé (503 sur la clé publique). En test, `loadTestEnv` génère des clés jetables si absentes (CI sans secret).
+- `web-push` épinglé en **3.6.7** (avec `@types/web-push` 3.6.4). La 4.0.0 est récente et sans types.
+- Frontend :
+  - `public/sw.js` : service worker classique, non bundlé par Vite. Événements `push` et `notificationclick` (focus + `postMessage` `open-conversation`, sinon `openWindow("/?c=<id>")`).
+  - `src/push.ts` : `enablePush`, `disablePush`, `syncPushSubscription`.
+  - À l'ouverture de l'application, un abonnement existant est renvoyé au serveur (rattaché à l'utilisateur courant) ; à la déconnexion, désabonnement.
+  - Manifeste et icônes dans `public/`.
+- Nginx : `/sw.js` et `/manifest.webmanifest` en `no-cache`. Le service worker exige un contexte sécurisé : HTTPS, ou `localhost` en développement.
+- Vérifié en réel : Edge s'abonne au service push de Microsoft (WNS), et la notification est affichée par le service worker onglet fermé.
+
 ## Médias (MinIO, URL présignées)
 
 - **Le fichier ne passe jamais par le backend.** Parcours :
