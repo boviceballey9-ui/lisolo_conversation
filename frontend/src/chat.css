@@ -213,6 +213,9 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.conv-item__preview--typing {
+  color: var(--green);
+}
 .badge {
   flex: none;
   min-width: 20px;
@@ -256,6 +259,9 @@ body {
 .chat__subtitle {
   font-size: 13px;
   color: var(--text-muted);
+}
+.chat__subtitle--active {
+  color: var(--green);
 }
 
 .chat__messages {

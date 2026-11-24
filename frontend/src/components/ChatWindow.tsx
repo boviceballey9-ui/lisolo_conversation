@@ -14,12 +14,25 @@ interface Props {
   messages: ChatMessage[];
   hasMore: boolean;
   meId: string;
+  // Sous-titre de l'en-tête : « en train d'écrire… », « en ligne », « vu(e) … ».
+  status: { text: string; highlight?: boolean } | null;
   onSend: (content: string) => void;
+  onDraftChange: (draft: string) => void;
   onLoadOlder: () => Promise<void>;
   onBack: () => void;
 }
 
-export function ChatWindow({ conversation, messages, hasMore, meId, onSend, onLoadOlder, onBack }: Props) {
+export function ChatWindow({
+  conversation,
+  messages,
+  hasMore,
+  meId,
+  status,
+  onSend,
+  onDraftChange,
+  onLoadOlder,
+  onBack,
+}: Props) {
   const [draft, setDraft] = useState("");
   const [loadingOlder, setLoadingOlder] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -86,7 +99,11 @@ export function ChatWindow({ conversation, messages, hasMore, meId, onSend, onLo
         <Avatar name={title} size={40} />
         <div>
           <div className="chat__title">{title}</div>
-          {conversation.otherUser && <div className="chat__subtitle">{conversation.otherUser.phone}</div>}
+          {status && (
+            <div className={`chat__subtitle${status.highlight ? " chat__subtitle--active" : ""}`} aria-live="polite">
+              {status.text}
+            </div>
+          )}
         </div>
       </header>
 
@@ -121,7 +138,10 @@ export function ChatWindow({ conversation, messages, hasMore, meId, onSend, onLo
           rows={1}
           placeholder="Tapez un message"
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            onDraftChange(e.target.value);
+          }}
           onKeyDown={onKeyDown}
           maxLength={4096}
           aria-label="Message"

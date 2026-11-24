@@ -75,11 +75,20 @@ Réponds toujours en français.
 - Frontend : état et handlers socket dans `frontend/src/pages/Chat.tsx` (refs pour lire l'état courant dans les handlers), envoi optimiste avec `clientId` remplacé à l'ack, `message:delivered` à la réception, `message:read` si la conversation est ouverte et l'onglet visible. Styles dans `frontend/src/chat.css`.
 - Limite connue : le token n'est vérifié qu'à la connexion du socket ; un socket ouvert survit à l'expiration de l'access token.
 
+### Présence et « en train d'écrire »
+
+- **État en mémoire, dans la closure de `attachSocket`** (jamais en base, sauf `users.last_seen_at`) : `connections` (nombre de sockets ouverts par utilisateur) et `typing` (clé `<userId>:<conversationId>` → minuteur, socket, destinataires). Conséquence : valable pour **un seul processus** ; plusieurs instances du backend nécessiteraient Redis (adaptateur Socket.io + état partagé).
+- En ligne au passage 0 → 1 connexion ; hors ligne au passage 1 → 0 : écrire `last_seen_at`, puis **re-vérifier que l'utilisateur ne s'est pas reconnecté** avant d'émettre `online: false`.
+- La présence n'est diffusée qu'aux **contacts** (`contactIds` : partagent une conversation) ; `presence:get` filtre aussi sur les contacts.
+- Événements : client → serveur `typing:start` / `typing:stop { conversationId }`, `presence:get { userIds }` (ack `{ presence: [{ userId, online, lastSeenAt }] }`) ; serveur → client `presence:update { userId, online, lastSeenAt }`, `typing:update { conversationId, userId, isTyping }`.
+- Saisie : `isTyping: true` émis seulement au premier `typing:start` ; les suivants relancent le minuteur (`typingTimeoutMs`, 3 s par défaut, option de `attachSocket` — 200 ms dans les tests). Arrêt aussi à `typing:stop`, à `message:send`, et à la déconnexion du socket qui a signalé la saisie.
+- Front : `typing:start` limité à 1 toutes les 2 s (doit rester < `typingTimeoutMs`) ; à chaque (re)connexion, l'état présence/saisie est vidé puis la présence redemandée.
+
 ## Tests
 
 - `test/globalSetup.ts` crée la base `whatsapp_test` si besoin et y applique `prisma migrate deploy` ; `test/setup.ts` redirige `DATABASE_URL` vers `TEST_DATABASE_URL` (garde-fou : refuse si identique à la base de dev) et fait un `TRUNCATE` de toutes les tables avant **chaque** test. Ajouter une table → l'ajouter à ce `TRUNCATE`.
 - `BCRYPT_ROUNDS=4` en test. Fichiers en série (`fileParallelism: false`).
-- `test/helpers.ts` : `createUser()` (insert direct + token), `startServer()` (vrai serveur HTTP + Socket.io sur port 0, à fermer dans `afterEach`), `connect(url, token)`, `waitFor(socket, event)`, `expectNoEvent(socket, event)`. Côté client de test, utiliser `socket.emitWithAck(...)`.
+- `test/helpers.ts` : `createUser()` (insert direct + token), `startServer(options?)` (vrai serveur HTTP + Socket.io sur port 0, à fermer dans `afterEach`), `connect(url, token)`, `waitFor(socket, event)`, `expectNoEvent(socket, event)`. Côté client de test, utiliser `socket.emitWithAck(...)`.
 - `src/__tests__/` est exclu du build `tsc`.
 - Backend en ESM (`"type": "module"`, `module: NodeNext`) : les imports relatifs TypeScript doivent porter l'extension `.js`.
 - **Chargement du `.env`** : `backend/src/env.ts` doit rester le **premier import** de `index.ts`. En ESM les imports sont évalués avant le code, donc `db.ts` lirait `DATABASE_URL` trop tôt sinon.

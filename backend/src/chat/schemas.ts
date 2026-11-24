@@ -28,4 +28,12 @@ export const readSchema = z.object({
   conversationId: z.uuid(),
 });
 
+export const typingSchema = z.object({
+  conversationId: z.uuid(),
+});
+
+export const presenceGetSchema = z.object({
+  userIds: z.array(z.uuid()).min(1).max(200),
+});
+
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;

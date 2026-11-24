@@ -198,6 +198,39 @@ export async function sendMessage(senderId: string, { conversationId, content }:
   return { message: toMessageDTO(message), recipientIds };
 }
 
+// ---------- Présence ----------
+
+// Mes « contacts » : les personnes avec qui je partage au moins une conversation.
+// Ce sont elles (et seulement elles) qui voient si je suis en ligne.
+export async function contactIds(userId: string): Promise<string[]> {
+  const rows = await prisma.participant.findMany({
+    where: { userId: { not: userId }, conversation: { participants: { some: { userId } } } },
+    select: { userId: true },
+    distinct: ["userId"],
+  });
+  return rows.map((r) => r.userId);
+}
+
+// Ids des participants d'une conversation (lève une 404 si `userId` n'en fait pas partie).
+export async function participantIdsFor(userId: string, conversationId: string): Promise<string[]> {
+  const rows = await prisma.participant.findMany({ where: { conversationId }, select: { userId: true } });
+  const ids = rows.map((r) => r.userId);
+  if (!ids.includes(userId)) throw notFound("Conversation introuvable");
+  return ids;
+}
+
+export async function setLastSeen(userId: string): Promise<Date> {
+  const lastSeenAt = new Date();
+  // updateMany : ne lève pas d'erreur si le compte a été supprimé entre-temps.
+  await prisma.user.updateMany({ where: { id: userId }, data: { lastSeenAt } });
+  return lastSeenAt;
+}
+
+export async function lastSeenOf(userIds: string[]) {
+  const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, lastSeenAt: true } });
+  return new Map(users.map((u) => [u.id, u.lastSeenAt]));
+}
+
 // ---------- Accusés de réception ----------
 
 // Changement de statut à notifier à un expéditeur.

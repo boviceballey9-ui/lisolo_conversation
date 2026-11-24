@@ -70,6 +70,11 @@ Connexion avec `auth: { token: <accessToken> }`.
 | client → serveur | `message:read` | `{ conversationId }` (✓✓ bleu) |
 | serveur → client | `message:new` | le message |
 | serveur → client | `message:status` | `{ conversationId, messageIds, userId, status }` |
+| client → serveur | `typing:start` / `typing:stop` | `{ conversationId }` (arrêt automatique après 3 s sans `typing:start`) |
+| client → serveur | `presence:get` | `{ userIds }` → ack `{ ok, presence: [{ userId, online, lastSeenAt }] }` |
+| serveur → client | `typing:update` | `{ conversationId, userId, isTyping }` |
+| serveur → client | `presence:update` | `{ userId, online, lastSeenAt }` (envoyé à vos contacts) |
+
 Console MinIO : http://localhost:9001 (identifiants `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` du `.env`).
 
 ## Base de données (Prisma)

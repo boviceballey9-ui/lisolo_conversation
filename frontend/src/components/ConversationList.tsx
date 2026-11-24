@@ -9,10 +9,11 @@ interface Props {
   conversations: Conversation[];
   activeId: string | null;
   meId: string;
+  typingConversations: Set<string>; // conversations où quelqu'un est en train d'écrire
   onOpen: (id: string) => void;
 }
 
-export function ConversationList({ conversations, activeId, meId, onOpen }: Props) {
+export function ConversationList({ conversations, activeId, meId, typingConversations, onOpen }: Props) {
   if (conversations.length === 0) {
     return (
       <p className="sidebar__empty">
@@ -44,10 +45,14 @@ export function ConversationList({ conversations, activeId, meId, onOpen }: Prop
                   </span>
                 </div>
                 <div className="conv-item__row">
-                  <span className="conv-item__preview">
-                    {mine && <Ticks status={last.status} />}
-                    {last?.content ?? <em>Aucun message</em>}
-                  </span>
+                  {typingConversations.has(c.id) ? (
+                    <span className="conv-item__preview conv-item__preview--typing">en train d'écrire…</span>
+                  ) : (
+                    <span className="conv-item__preview">
+                      {mine && <Ticks status={last.status} />}
+                      {last?.content ?? <em>Aucun message</em>}
+                    </span>
+                  )}
                   {c.unreadCount > 0 && (
                     <span className="badge" aria-label={`${c.unreadCount} non lus`}>
                       {c.unreadCount}

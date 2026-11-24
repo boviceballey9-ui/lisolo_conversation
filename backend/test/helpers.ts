@@ -4,7 +4,7 @@ import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
 import { createApp } from "../src/app.js";
 import { signAccessToken } from "../src/auth/tokens.js";
 import { prisma } from "../src/db.js";
-import { attachSocket } from "../src/socket.js";
+import { attachSocket, type SocketOptions } from "../src/socket.js";
 
 let counter = 0;
 
@@ -17,9 +17,9 @@ export async function createUser(name = "Utilisateur") {
 }
 
 // Démarre un vrai serveur HTTP + Socket.io sur un port libre (port 0 = choisi par l'OS).
-export async function startServer() {
+export async function startServer(options?: SocketOptions) {
   const server = http.createServer(createApp());
-  const io = attachSocket(server);
+  const io = attachSocket(server, options);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as AddressInfo;
   return {

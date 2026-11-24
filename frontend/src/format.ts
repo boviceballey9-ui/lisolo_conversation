@@ -23,6 +23,15 @@ export function formatDayLabel(iso: string) {
   return new Date(iso).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 }
 
+// En-tête de conversation : "vu(e) aujourd'hui à 14:05", "vu(e) hier à 09:12", "vu(e) le 23/11/26 à 18:40".
+export function formatLastSeen(iso: string) {
+  const label = formatListDate(iso);
+  const time = formatTime(iso);
+  if (label === "Hier") return `vu(e) hier à ${time}`;
+  if (label === time) return `vu(e) aujourd'hui à ${time}`;
+  return `vu(e) le ${label} à ${time}`;
+}
+
 // Initiales pour l'avatar : "Alice Martin" → "AM".
 export function initials(name: string) {
   return name

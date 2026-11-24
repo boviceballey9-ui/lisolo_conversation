@@ -15,6 +15,7 @@ import { Avatar } from "../components/Avatar";
 import { ChatWindow, type ChatMessage } from "../components/ChatWindow";
 import { ConversationList } from "../components/ConversationList";
 import { NewChat } from "../components/NewChat";
+import { formatLastSeen } from "../format";
 import { createSocket } from "../socket";
 
 // Messages chargés d'une conversation + curseur pour charger les plus anciens.
@@ -30,7 +31,26 @@ interface StatusEvent {
   status: DeliveryStatus;
 }
 
+interface Presence {
+  online: boolean;
+  lastSeenAt: string | null;
+}
+
+interface PresenceEvent extends Presence {
+  userId: string;
+}
+
+interface TypingEvent {
+  conversationId: string;
+  userId: string;
+  isTyping: boolean;
+}
+
 const RANK: Record<DeliveryStatus, number> = { SENT: 0, DELIVERED: 1, READ: 2 };
+
+// Pendant la frappe, on renvoie typing:start au plus toutes les 2 s : moins que le délai
+// d'arrêt automatique du serveur (3 s), pour qu'il soit relancé tant qu'on tape.
+const TYPING_THROTTLE_MS = 2000;
 
 const isVisible = () => document.visibilityState === "visible";
 
@@ -42,15 +62,22 @@ export default function Chat() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
   const [connected, setConnected] = useState(false);
+  // Présence de mes contacts, et qui est en train d'écrire dans quelle conversation.
+  const [presence, setPresence] = useState<Record<string, Presence>>({});
+  const [typing, setTyping] = useState<Record<string, string[]>>({});
 
   // Les handlers du socket sont créés une seule fois : ils lisent l'état courant via ces refs.
   const socketRef = useRef<Socket | null>(null);
   const meRef = useRef(me);
   const activeRef = useRef(activeId);
   const conversationsRef = useRef(conversations);
+  const presenceRef = useRef(presence);
   meRef.current = me;
   activeRef.current = activeId;
   conversationsRef.current = conversations;
+  presenceRef.current = presence;
+  // Dernier typing:start envoyé (pour limiter la fréquence et savoir quoi arrêter).
+  const lastTypingEmit = useRef<{ conversationId: string; at: number } | null>(null);
 
   const goToLogin = useCallback(() => {
     logout();
@@ -88,6 +115,10 @@ export default function Chat() {
 
     socket.on("connect", () => {
       setConnected(true);
+      // On repart d'un état vierge : la présence est redemandée (effet plus bas),
+      // et un typing:update « false » a pu être manqué pendant la coupure.
+      setPresence({});
+      setTyping({});
       if (firstConnection) {
         firstConnection = false;
         return;
@@ -147,11 +178,80 @@ export default function Chat() {
       );
     });
 
+    // Un contact se connecte ou se déconnecte.
+    socket.on("presence:update", ({ userId, online, lastSeenAt }: PresenceEvent) => {
+      setPresence((p) => ({
+        ...p,
+        [userId]: { online, lastSeenAt: lastSeenAt ?? p[userId]?.lastSeenAt ?? null },
+      }));
+    });
+
+    // Quelqu'un commence / arrête d'écrire dans une de mes conversations.
+    socket.on("typing:update", ({ conversationId, userId, isTyping }: TypingEvent) => {
+      setTyping((t) => {
+        const users = new Set(t[conversationId] ?? []);
+        if (isTyping) users.add(userId);
+        else users.delete(userId);
+        return { ...t, [conversationId]: [...users] };
+      });
+    });
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
   }, [meId, goToLogin, loadThread]);
+
+  // Demande la présence des contacts dont on ne connaît pas encore l'état
+  // (au démarrage, après une reconnexion, quand une nouvelle conversation apparaît).
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!connected || !socket) return;
+    const missing = [
+      ...new Set(
+        conversations.map((c) => c.otherUser?.id).filter((id): id is string => !!id && !(id in presenceRef.current)),
+      ),
+    ];
+    if (missing.length === 0) return;
+    socket.emit(
+      "presence:get",
+      { userIds: missing },
+      (res: { ok: boolean; presence?: PresenceEvent[] }) => {
+        if (!res.ok || !res.presence) return;
+        setPresence((p) => {
+          const next = { ...p };
+          for (const { userId, online, lastSeenAt } of res.presence!) next[userId] = { online, lastSeenAt };
+          return next;
+        });
+      },
+    );
+  }, [connected, conversations]);
+
+  // ---------- Saisie ----------
+
+  const stopTyping = useCallback(() => {
+    const last = lastTypingEmit.current;
+    if (!last) return;
+    socketRef.current?.emit("typing:stop", { conversationId: last.conversationId });
+    lastTypingEmit.current = null;
+  }, []);
+
+  // Appelé à chaque modification du champ de saisie.
+  const onDraftChange = useCallback(
+    (draft: string) => {
+      const socket = socketRef.current;
+      const conversationId = activeRef.current;
+      if (!socket || !conversationId) return;
+      if (!draft.trim()) return stopTyping(); // champ vidé : on n'écrit plus
+
+      const last = lastTypingEmit.current;
+      const now = Date.now();
+      if (last && last.conversationId === conversationId && now - last.at < TYPING_THROTTLE_MS) return;
+      lastTypingEmit.current = { conversationId, at: now };
+      socket.emit("typing:start", { conversationId });
+    },
+    [stopTyping],
+  );
 
   // Retour sur l'onglet avec une conversation ouverte : elle devient lue.
   useEffect(() => {
@@ -163,6 +263,7 @@ export default function Chat() {
   }, [markRead]);
 
   const openConversation = async (id: string) => {
+    if (id !== activeId) stopTyping(); // on quitte la conversation où l'on écrivait
     setActiveId(id);
     setShowNewChat(false);
     markRead(id);
@@ -199,6 +300,7 @@ export default function Chat() {
     if (!activeId || !me || !socket) return;
     const conversationId = activeId;
     const clientId = crypto.randomUUID();
+    lastTypingEmit.current = null; // le serveur arrête lui-même « en train d'écrire » à l'envoi
     const optimistic: ChatMessage = {
       id: clientId,
       conversationId,
@@ -253,6 +355,17 @@ export default function Chat() {
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
   const thread = activeId ? threads[activeId] : undefined;
+  const typingConversations = new Set(Object.keys(typing).filter((id) => typing[id].length > 0));
+
+  // Sous-titre de l'en-tête, par ordre de priorité, comme WhatsApp.
+  const headerStatus = (c: Conversation): { text: string; highlight?: boolean } | null => {
+    if (typingConversations.has(c.id)) return { text: "en train d'écrire…", highlight: true };
+    if (!c.otherUser) return null;
+    const p = presence[c.otherUser.id];
+    if (p?.online) return { text: "en ligne" };
+    if (p?.lastSeenAt) return { text: formatLastSeen(p.lastSeenAt) };
+    return { text: c.otherUser.phone };
+  };
 
   return (
     <div className={`app${active ? " app--chat-open" : ""}`}>
@@ -269,7 +382,13 @@ export default function Chat() {
         </header>
         {!connected && <div className="sidebar__offline">Connexion au serveur…</div>}
         {showNewChat && <NewChat onStarted={onConversationStarted} onCancel={() => setShowNewChat(false)} />}
-        <ConversationList conversations={conversations} activeId={activeId} meId={me.id} onOpen={openConversation} />
+        <ConversationList
+          conversations={conversations}
+          activeId={activeId}
+          meId={me.id}
+          typingConversations={typingConversations}
+          onOpen={openConversation}
+        />
       </aside>
 
       <main className="chat-pane">
@@ -279,9 +398,14 @@ export default function Chat() {
             messages={thread?.items ?? []}
             hasMore={Boolean(thread?.nextCursor)}
             meId={me.id}
+            status={headerStatus(active)}
             onSend={send}
+            onDraftChange={onDraftChange}
             onLoadOlder={loadOlder}
-            onBack={() => setActiveId(null)}
+            onBack={() => {
+              stopTyping();
+              setActiveId(null);
+            }}
           />
         ) : (
           <div className="chat-empty">
