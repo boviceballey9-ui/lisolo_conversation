@@ -1,0 +1,79 @@
+# Lance les tests du backend à chaque push (et sur les pull requests).
+# Les tests tournent contre un VRAI PostgreSQL et un VRAI MinIO, comme en local.
+name: Tests backend
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Valeurs FACTICES propres à la CI (aucun secret réel n'est nécessaire ni utilisé).
+    env:
+      DATABASE_URL: postgresql://whatsapp:ci_password@localhost:5432/whatsapp
+      TEST_DATABASE_URL: postgresql://whatsapp:ci_password@localhost:5432/whatsapp_test
+      JWT_ACCESS_SECRET: ci-access-secret-not-used-anywhere-else
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-used-anywhere-else
+      BCRYPT_ROUNDS: "4"
+      MINIO_ROOT_USER: ciminio
+      MINIO_ROOT_PASSWORD: ci_minio_password
+      MINIO_ENDPOINT: http://localhost:9000
+      MINIO_BUCKET: media
+      MINIO_TEST_BUCKET: media-test
+      TURN_SECRET: ci-turn-secret
+      TURN_HOST: localhost
+      CORS_ORIGINS: http://localhost:5173,https://localhost
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: whatsapp
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: whatsapp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U whatsapp -d whatsapp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # L'image Chainguard de MinIO a besoin d'arguments (« server /data ») : impossible avec
+      # « services: » dans GitHub Actions, on la lance donc à la main.
+      - name: Démarrer MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD \
+            cgr.dev/chainguard/minio:latest server /data
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && exit 0
+            sleep 2
+          done
+          docker logs minio
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Installer les dépendances (génère aussi le client Prisma)
+        run: npm ci
+
+      - name: Compiler (TypeScript)
+        run: npm run build
+
+      - name: Tests (Vitest + Supertest)
+        run: npm test

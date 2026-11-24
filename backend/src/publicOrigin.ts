@@ -1,7 +1,7 @@
 // Par quelle adresse publique le client nous a-t-il joints ?
 //
 // Derrière Nginx, le navigateur peut venir de https://localhost, https://127.0.0.1 ou
-// https://172.30.70.236 (téléphone sur le Wi-Fi). Les URL qu'on lui renvoie (URL présignées
+// https://192.168.1.42 (téléphone sur le Wi-Fi). Les URL qu'on lui renvoie (URL présignées
 // MinIO, serveur TURN) doivent utiliser CETTE adresse, sinon il ne pourra pas les joindre
 // (et pour MinIO, la signature porte sur l'hôte : un autre hôte = signature invalide).
 //

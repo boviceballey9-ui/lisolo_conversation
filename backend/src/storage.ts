@@ -38,7 +38,7 @@ const makeClient = (endpoint: string) =>
 // Client « interne » : le backend parle directement à MinIO (création du bucket, HEAD, suppression).
 export const s3 = makeClient(config.storage.endpoint);
 
-// Clients de SIGNATURE, un par adresse publique (https://localhost, https://172.30.70.236…).
+// Clients de SIGNATURE, un par adresse publique (https://localhost, https://192.168.1.42…).
 // Signer ne demande aucun accès réseau : l'URL produite pointe vers Nginx, qui la relaie à MinIO
 // en conservant l'en-tête Host… sur lequel porte la signature.
 const signers = new Map<string, S3Client>();

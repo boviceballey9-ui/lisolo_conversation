@@ -564,7 +564,7 @@ export default function Chat() {
         />
       </aside>
 
-      <main className="chat-pane">
+      <main className={`chat-pane${active && panel ? " chat-pane--with-panel" : ""}`}>
         {active ? (
           <ChatWindow
             conversation={active}

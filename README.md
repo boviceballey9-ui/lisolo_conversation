@@ -1,199 +1,180 @@
-# WhatsApp Clone (projet d'apprentissage)
+# WhatsApp Clone
 
-Clone de WhatsApp pour apprendre : messagerie, médias et appels audio/vidéo.
+**Français** · [English](README.en.md)
+
+[![Tests backend](https://github.com/boviceballey9-ui/lisolo_conversation/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/boviceballey9-ui/lisolo_conversation/actions/workflows/backend-tests.yml)
+[![Licence MIT](https://img.shields.io/badge/licence-MIT-green.svg)](LICENSE)
+![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+
+Une messagerie inspirée de WhatsApp, construite de zéro pour **apprendre** tout ce qu'il y a derrière une application de ce type : temps réel, accusés de lecture, groupes, envoi de fichiers, appels audio et vidéo en WebRTC, et déploiement HTTPS derrière un reverse proxy.
+
+Le projet a été mené en 10 étapes, chacune testée et commitée séparément.
+
+![Discussion avec photo, message vocal, document et trace d'appel](docs/screenshots/chat.png)
+
+## Captures d'écran
+
+| Appel vidéo (WebRTC) | Groupe : membres et rôles |
+|---|---|
+| ![Appel vidéo](docs/screenshots/call.png) | ![Infos du groupe](docs/screenshots/group.png) |
+| **« Lu par » : accusés de lecture en groupe** | **Connexion** |
+| ![Infos du message](docs/screenshots/message-info.png) | ![Connexion](docs/screenshots/login.png) |
+
+<p align="center"><img src="docs/screenshots/mobile.png" alt="Version mobile" width="300"></p>
+
+## Fonctionnalités
+
+- **Comptes** : inscription et connexion par numéro de téléphone. JWT avec access token (15 min) et refresh token (7 j), mots de passe hachés avec bcrypt.
+- **Chat temps réel** avec Socket.io : envoi optimiste, historique paginé, compteur de non-lus.
+- **Accusés de réception** ✓ envoyé, ✓✓ reçu, ✓✓ bleu lu. En groupe, le bleu n'apparaît que lorsque *tous* les membres ont lu, et l'écran « Infos du message » liste qui a lu et quand.
+- **Présence** : « en ligne », « vu(e) aujourd'hui à 14:05 » (plusieurs onglets gérés), et « Alice écrit… ».
+- **Groupes** : rôles admin et membre, ajout, retrait, nomination d'admins, départ (le plus ancien membre prend le relais), messages système.
+- **Médias** : photos, vidéos, documents, **messages vocaux** (bouton micro maintenu), photo de profil et photo de groupe. Les fichiers vont directement du navigateur au stockage, avec une barre de progression.
+- **Appels audio et vidéo 1-à-1** en WebRTC : sonnerie, occupé, appel manqué, coupure du micro ou de la caméra, historique des appels dans la conversation.
+- **HTTPS** derrière Nginx, testable depuis un téléphone sur le Wi-Fi.
 
 ## Architecture
 
-| Dossier / service | Rôle |
+```mermaid
+flowchart LR
+    subgraph Client["Navigateur (PC ou téléphone)"]
+        UI["React + Vite<br/>Socket.io · PeerJS"]
+    end
+
+    subgraph Docker["Docker Compose"]
+        NGINX["Nginx<br/>HTTPS 443"]
+        STATIC["Frontend<br/>(build statique)"]
+        MINIO[("MinIO<br/>stockage S3")]
+        PG[("PostgreSQL 16")]
+        TURN["coturn<br/>STUN / TURN"]
+    end
+
+    API["Backend Node.js<br/>Express · Socket.io · PeerServer"]
+
+    UI -- "HTTPS / WSS" --> NGINX
+    NGINX -- "/" --> STATIC
+    NGINX -- "/api · /socket.io · /peerjs" --> API
+    NGINX -- "/media (URL présignées)" --> MINIO
+    API -- "Prisma" --> PG
+    API -- "SDK S3" --> MINIO
+    UI <-. "audio / vidéo WebRTC (UDP)" .-> TURN
+```
+
+Envoi d'une photo : le backend **signe** une autorisation, mais le fichier ne passe jamais par lui.
+
+```mermaid
+sequenceDiagram
+    participant N as Navigateur
+    participant B as Backend
+    participant S as MinIO
+    N->>B: POST /api/media/upload-url (type, taille)
+    B-->>N: URL présignée PUT (5 min)
+    N->>S: PUT du fichier (direct, avec progression)
+    N->>B: POST /api/media (clé de l'objet)
+    B->>S: HEAD (type et taille réels)
+    B-->>N: media { id }
+    N->>B: message:send { mediaId } (Socket.io)
+```
+
+## Stack technique
+
+| | |
 |---|---|
-| `backend/` | API Node.js + Express + TypeScript (port 4000) |
-| `frontend/` | Interface React + Vite + TypeScript (port 5173) |
-| `postgres` | Base de données : utilisateurs, conversations, messages (port **5433** sur Windows) |
-| `minio` | Stockage objet compatible S3 pour les médias, image `cgr.dev/chainguard/minio` (API 9000, console 9001) |
-| `coturn` | Serveur STUN/TURN pour les appels WebRTC (port 3478) |
+| **Frontend** | React 18, Vite, TypeScript, Socket.io client, PeerJS |
+| **Backend** | Node.js, Express 4, TypeScript (ESM), Socket.io 4, PeerServer, Zod, JWT, bcrypt |
+| **Données** | PostgreSQL 16, Prisma 7 |
+| **Fichiers** | MinIO (compatible S3), SDK AWS v3, URL présignées |
+| **Appels** | WebRTC, PeerJS, coturn (STUN/TURN, identifiants temporaires) |
+| **Infrastructure** | Docker Compose, Nginx (HTTPS, HTTP/2, WebSocket), mkcert |
+| **Qualité** | Vitest + Supertest : 131 tests sur une vraie base et un vrai MinIO, GitHub Actions |
 
-## Prérequis
+## Installation
 
-- [Node.js](https://nodejs.org/) 20 ou plus
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (démarré)
+Prérequis : [Node.js](https://nodejs.org/) 20 ou plus, [Docker Desktop](https://www.docker.com/products/docker-desktop/). Les commandes sont pour Windows PowerShell.
 
-## Lancer le projet (PowerShell)
+### 1. Configuration
 
 ```powershell
-# 1. Créer votre fichier de configuration local, puis modifier les mots de passe
+git clone https://github.com/boviceballey9-ui/lisolo_conversation.git
+cd lisolo_conversation
 Copy-Item .env.example .env
+```
 
-# 2. Démarrer PostgreSQL, MinIO et coturn
-docker compose up -d
-docker compose ps
+Dans `.env`, remplacez les valeurs `change_me` et `remplacez_moi…` : mots de passe PostgreSQL et MinIO, secrets JWT, `TURN_SECRET`. Une valeur aléatoire s'obtient avec :
 
-# 3. Backend (dans un premier terminal)
+```powershell
+[Convert]::ToBase64String((1..48 | ForEach-Object { Get-Random -Maximum 256 }))
+```
+
+### 2. Mode développement (Vite, http://localhost:5173)
+
+```powershell
+docker compose up -d postgres minio coturn
+
+# Terminal 1 : backend (port 4000)
 cd backend
-npm install           # génère aussi le client Prisma
-npx prisma migrate deploy   # crée les tables dans PostgreSQL
+npm install
+npx prisma migrate deploy
 npm run dev
-# -> http://localhost:4000/health
 
-# 4. Frontend (dans un second terminal)
+# Terminal 2 : frontend (port 5173)
 cd frontend
 npm install
 npm run dev
-# -> http://localhost:5173
 ```
 
-Tester la route de santé :
+Ouvrez http://localhost:5173, créez deux comptes (fenêtre normale et fenêtre privée), puis « Nouvelle discussion » avec le numéro de l'autre compte.
+
+### 3. Mode HTTPS avec Nginx (build de production, accessible depuis un téléphone)
 
 ```powershell
-Invoke-RestMethod http://localhost:4000/api/health
+# Certificat local pour localhost, 127.0.0.1 et l'IP Wi-Fi du PC
+# (une fois : winget install FiloSottile.mkcert ; mkcert -install)
+powershell -ExecutionPolicy Bypass -File scripts\gen-certs.ps1
 ```
 
-## API
+Reportez l'IP affichée dans `.env` (`TURN_EXTERNAL_IP`, `TURN_HOST`, `CORS_ORIGINS`), puis :
 
-| Méthode | Route | Rôle |
-|---|---|---|
-| POST | `/api/auth/register` | Inscription `{ phone, name, password }` → `{ user, accessToken, refreshToken }` |
-| POST | `/api/auth/login` | Connexion `{ phone, password }` → `{ user, accessToken, refreshToken }` |
-| POST | `/api/auth/refresh` | `{ refreshToken }` → `{ accessToken }` |
-| GET | `/api/users/me` | Mon profil (en-tête `Authorization: Bearer <accessToken>`) |
-| GET | `/api/conversations` | Mes conversations, avec le dernier message et le nombre de non-lus |
-| POST | `/api/conversations` | `{ phone }` → démarre (ou retrouve) une discussion avec ce numéro |
-| GET | `/api/conversations/:id/messages?limit=30&before=<id>` | Historique paginé → `{ messages, nextCursor }` |
-| GET | `/api/conversations/:id/messages/:messageId/info` | Infos d'un de mes messages : qui l'a reçu / lu, et quand |
-| POST | `/api/groups` | `{ name, phones }` → crée un groupe (j'en suis admin) |
-| PATCH | `/api/groups/:id` | `{ name }` → renomme (admin) |
-| POST | `/api/groups/:id/members` | `{ phones }` → ajoute des membres (admin) |
-| DELETE | `/api/groups/:id/members/:userId` | Retire un membre (admin) |
-| POST | `/api/groups/:id/admins` | `{ userId }` → nomme un admin (admin) |
-| POST | `/api/groups/:id/leave` | Quitter le groupe |
-
-| PATCH | `/api/groups/:id/photo` | `{ mediaId \| null }` → photo du groupe (admin) |
-| PATCH | `/api/users/me/avatar` | `{ mediaId \| null }` → ma photo de profil |
-| POST | `/api/media/upload-url` | `{ mimeType, size, fileName? }` → URL présignée PUT vers MinIO (5 min) |
-| POST | `/api/media` | `{ objectKey, fileName? }` → enregistre le fichier envoyé → `{ media }` |
-| GET | `/api/media/:id/url` | URL présignée GET (5 min), si vous avez le droit de lire ce média |
-| GET | `/api/calls/ice-config` | Serveurs STUN/TURN pour les appels (identifiants TURN temporaires) |
-
-Un membre non admin reçoit **403** sur les actions d'admin ; un non-membre reçoit **404**.
-
-### Envoi d'un fichier
-
-Le fichier va **directement du navigateur à MinIO**, jamais à travers le backend :
-
-```
-navigateur ──1. upload-url──▶ backend (vérifie type/taille, signe)
-navigateur ──2. PUT fichier─▶ MinIO   (vérifie la signature)
-navigateur ──3. POST media──▶ backend (vérifie l'objet, crée la ligne media)
-navigateur ──4. message:send { mediaId } ──▶ Socket.io
+```powershell
+docker compose up -d --build                  # Postgres, MinIO, coturn et Nginx (construit le frontend)
+cd backend; npx prisma migrate deploy; npm run build; npm start
 ```
 
-Limites : images et messages vocaux 16 Mo, vidéos 64 Mo, documents 100 Mo.
+→ **https://localhost**, ou `https://<IP-du-PC>` depuis un téléphone sur le même Wi-Fi. Pour le téléphone, il faut d'abord installer le certificat racine `rootCA.pem` donné par `mkcert -CAROOT` (jamais `rootCA-key.pem`) dans *Paramètres → Sécurité → Chiffrement et identifiants → Installer un certificat → Certificat CA*.
 
-### Temps réel (Socket.io, même port que l'API)
-
-Connexion avec `auth: { token: <accessToken> }`.
-
-| Sens | Événement | Données |
-|---|---|---|
-| client → serveur | `message:send` | `{ conversationId, content?, mediaId?, clientId? }` (texte et/ou média) → ack `{ ok, message, clientId }` |
-| client → serveur | `message:delivered` | `{ messageIds }` (✓✓) |
-| client → serveur | `message:read` | `{ conversationId }` (✓✓ bleu) |
-| serveur → client | `message:new` | le message |
-| serveur → client | `message:status` | `{ conversationId, messageIds, userId, status, aggregates }` (`aggregates` : statut global, bleu quand tous ont lu) |
-| serveur → client | `group:updated` | `{ conversationId, name, members }` |
-| serveur → client | `group:removed` | `{ conversationId }` (vous avez quitté le groupe ou en avez été retiré) |
-| client → serveur | `call:invite` | `{ conversationId, type: "AUDIO" \| "VIDEO" }` → ack `{ ok, call, reason? }` (`OFFLINE`, `BUSY`) |
-| client → serveur | `call:accept` / `call:reject` / `call:end` | `{ callId }` |
-| serveur → client | `call:invite` | `{ call, caller }` : ça sonne (tous vos onglets) |
-| serveur → client | `call:accept` / `call:reject` / `call:end` / `call:busy` | `{ call }` |
-
-### Appels audio / vidéo
-
-La sonnerie passe par Socket.io ; la connexion audio/vidéo elle-même passe par **WebRTC** (bibliothèque PeerJS, PeerServer sur `/peerjs`), avec STUN/TURN fournis par coturn. Pour essayer : deux comptes dans deux navigateurs, ouvrez la discussion, puis 📞 ou 🎥 dans l'en-tête (autorisez micro et caméra). Délai de sonnerie : 30 s, puis « appel manqué ». Chaque appel laisse une trace dans la conversation.
-| client → serveur | `typing:start` / `typing:stop` | `{ conversationId }` (arrêt automatique après 3 s sans `typing:start`) |
-| client → serveur | `presence:get` | `{ userIds }` → ack `{ ok, presence: [{ userId, online, lastSeenAt }] }` |
-| serveur → client | `typing:update` | `{ conversationId, userId, isTyping }` |
-| serveur → client | `presence:update` | `{ userId, online, lastSeenAt }` (envoyé à vos contacts) |
-
-Console MinIO : http://localhost:9001 (identifiants `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` du `.env`).
-
-## Base de données (Prisma)
-
-Le schéma est dans `backend/prisma/schema.prisma`. Après l'avoir modifié :
+### 4. Tests
 
 ```powershell
 cd backend
-npm run db:migrate -- --name description_du_changement
-npm run db:studio     # explorer les données dans le navigateur
+npm test        # 131 tests, sur une base et un bucket dédiés, créés et vidés automatiquement
 ```
 
-## Tests
+La liste des routes et des événements Socket.io est dans **[docs/api.md](docs/api.md)**.
 
-```powershell
-cd backend
-npm test
-```
+## Choix techniques
 
-Les tests utilisent une base séparée (`TEST_DATABASE_URL`, créée et migrée automatiquement) : vos données de développement ne sont jamais touchées.
+- **Le fichier ne passe jamais par le backend.** Le backend vérifie le type et la taille, puis signe une URL présignée valable 5 minutes. Type *et* taille font partie de la signature : MinIO refuse lui-même tout autre envoi. Après l'envoi, le backend revérifie l'objet réel avant de l'enregistrer.
+- **Deux canaux pour les appels.** Socket.io gère la sonnerie : prévenir tous les onglets, détecter l'occupé ou l'absence, enregistrer l'historique. PeerJS ne sert qu'après le décroché, pour établir la connexion WebRTC. Le son et l'image vont de navigateur à navigateur, chiffrés.
+- **Identifiants TURN temporaires** (« TURN REST API ») : le backend les fabrique par HMAC avec un secret partagé avec coturn. Aucun mot de passe fixe n'arrive dans le navigateur.
+- **Permissions vérifiées côté serveur**, avec des tests qui le prouvent sans interface : 404 plutôt que 403 pour ne pas révéler l'existence d'un groupe ou d'un média.
+- **Concurrence** : les changements d'un groupe passent dans une transaction avec `SELECT … FOR UPDATE`. Sans ce verrou, deux admins qui partent en même temps laissent un groupe sans admin, et un test le démontre.
+- **État éphémère en mémoire** (présence, « écrit… », appels en cours) et données durables en base (messages, `last_seen`, historique des appels).
+- **Tests d'intégration réalistes** sur un vrai PostgreSQL et un vrai MinIO, avec de vrais sockets.
 
-## Pages
+## Difficultés résolues
 
-- http://localhost:5173/register : inscription
-- http://localhost:5173/login : connexion
-- http://localhost:5173/ : discussions (protégé)
+- **L'image `minio/minio` a été retirée de Docker Hub.** Je l'ai remplacée par `cgr.dev/chainguard/minio`, qui tourne en utilisateur non-root (UID 65532). Un dossier Windows monté provoque alors des erreurs de permissions ; un **volume nommé** Docker les évite.
+- **coturn sous Docker Desktop** : `network_mode: host` n'y fonctionne pas, il faut publier explicitement le port 3478 et une plage de ports de relais UDP. Autres pièges :
+  - l'entrypoint de l'image passe ses arguments à `echo`, qui avale l'option `-n` ;
+  - `--no-cli` est déprécié ;
+  - l'authentification est passée d'un mot de passe fixe à un secret HMAC partagé.
+- **WebSocket derrière Nginx** : par défaut, Nginx parle HTTP/1.0 au backend, supprime les en-têtes `Upgrade` et `Connection`, et coupe une connexion silencieuse au bout de 60 s. Il faut `proxy_http_version 1.1`, recréer ces deux en-têtes et allonger les délais.
+- **Deux serveurs WebSocket sur un même port** : le serveur `ws` de PeerJS répondait 400 et fermait toutes les autres connexions, y compris `/socket.io`. Je l'ai passé en mode `noServer`, avec un aiguillage manuel des requêtes. Sans ce correctif, les tests Socket.io échouent tous.
+- **URL présignées et HTTPS** : la signature porte sur l'hôte. Le backend signe donc pour l'adresse réellement utilisée par le client (localhost ou l'IP Wi-Fi), et Nginx transmet l'en-tête `Host` intact à MinIO. Les versions récentes du SDK AWS ajoutaient aussi une somme de contrôle CRC32 qui cassait les envois depuis le navigateur.
+- Et aussi : un PostgreSQL natif qui occupait silencieusement le port 5432 ; Prisma 7, qui ne régénère plus son client après une migration ; l'encodage UTF-8 avec PowerShell 5.1.
 
-Pour essayer le chat : créez deux comptes (une fenêtre normale + une fenêtre de navigation privée), puis « Nouvelle discussion » avec le numéro de l'autre compte.
+## Licence
 
-Pour essayer les groupes : un troisième compte (autre navigateur ou autre profil), puis « Nouveau groupe ». Cliquez sur l'en-tête du groupe pour ouvrir « Infos du groupe », et sur « Infos » dans une de vos bulles pour voir qui a lu.
-
-## HTTPS avec Nginx (build de production, accès depuis un téléphone)
-
-Nginx devient le **seul point d'entrée** : `https://localhost`, ou `https://<IP-du-PC>` depuis le Wi-Fi.
-
-```powershell
-# 1. Certificat local (mkcert) pour localhost, 127.0.0.1 et l'IP Wi-Fi du PC
-#    (une fois : winget install FiloSottile.mkcert ; mkcert -install)
-powershell -ExecutionPolicy Bypass -File scripts\gen-certs.ps1        # ou : -Ip 192.168.1.42
-
-# 2. Dans .env : mettre cette IP dans TURN_EXTERNAL_IP, TURN_HOST et CORS_ORIGINS
-
-# 3. Backend sur Windows (Nginx le joint via host.docker.internal:4000)
-cd backend; npm run build; npm start          # ou npm run dev
-
-# 4. Infrastructure + Nginx (construit aussi le frontend de production)
-cd ..; docker compose up -d --build
-# -> https://localhost   (http://localhost redirige vers https)
-```
-
-| Chemin | Destination |
-|---|---|
-| `/` | frontend (fichiers statiques du build Vite) |
-| `/api/` | backend |
-| `/socket.io/`, `/peerjs/` | backend, en WebSocket |
-| `/media/` | MinIO (URL présignées, fichiers jusqu'à 100 Mo) |
-
-Les certificats (`nginx/certs/`) ne sont **jamais** commités.
-
-### Tester sur un téléphone Android
-
-1. Le téléphone doit être sur **le même Wi-Fi** que le PC.
-2. Copiez sur le téléphone le certificat **racine** : `rootCA.pem`, dans le dossier affiché par `mkcert -CAROOT`. Par câble USB, Google Drive ou e-mail ; renommez-le en `rootCA.crt` si Android ne le reconnaît pas. **Ne copiez jamais `rootCA-key.pem`** : avec ce fichier, n'importe qui pourrait fabriquer un certificat que votre téléphone accepterait pour *n'importe quel* site.
-3. Sur le téléphone : *Paramètres → Sécurité et confidentialité → Plus de paramètres de sécurité → Chiffrement et identifiants → Installer un certificat → Certificat CA*. Confirmez l'avertissement, puis choisissez le fichier. Le chemin varie selon la marque : cherchez « certificat CA » dans les paramètres.
-4. Ouvrez `https://<IP-du-PC>` dans **Chrome** : cadenas, pas d'alerte. Firefox pour Android n'utilise pas les certificats installés par l'utilisateur, sauf si on l'active dans ses paramètres secrets.
-5. Si la page ne charge pas, c'est le pare-feu Windows. Le réseau Wi-Fi doit être en profil **Privé**, et Docker Desktop doit être autorisé à recevoir des connexions (port 443, et UDP 3478 et 49160-49200 pour les appels).
-6. Après l'essai, vous pouvez supprimer le certificat (*Chiffrement et identifiants → Identifiants de confiance → Utilisateur*).
-
-Le micro, la caméra et l'enregistrement vocal ne fonctionnent qu'en HTTPS (ou sur `localhost`) : c'est ce qui rend Nginx + HTTPS nécessaire pour tester les appels sur téléphone.
-
-## Notes
-
-- **PowerShell 5.1 et les accents** : `Get-Content`/`Set-Content` lisent les fichiers UTF-8 sans BOM comme de l'ANSI et abîment les accents. Modifiez le `.env` avec VS Code plutôt qu'avec ces commandes.
-
-- **Port 5433** : le conteneur PostgreSQL est exposé sur 5433 pour ne pas entrer en conflit avec un PostgreSQL déjà installé sous Windows (port 5432). Modifiable via `POSTGRES_PORT` dans `.env`.
-- **MinIO** : l'image `minio/minio` a été retirée de Docker Hub. On utilise l'image Chainguard, qui tourne en utilisateur non-root (UID 65532). Gardez un **volume nommé** (`miniodata`) : un dossier Windows monté en bind provoquerait des erreurs de permissions.
-
-## Arrêter
-
-```powershell
-docker compose down      # arrête les conteneurs, garde les données
-docker compose down -v   # arrête ET supprime les volumes (données perdues)
-```
+[MIT](LICENSE) © 2026 Bovice
