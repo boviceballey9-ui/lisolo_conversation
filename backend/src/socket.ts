@@ -3,8 +3,10 @@ import { Server, type Socket } from "socket.io";
 import type { z } from "zod";
 import { verifyAccessToken } from "./auth/tokens.js";
 import { deliveredSchema, presenceGetSchema, readSchema, sendMessageSchema, typingSchema } from "./chat/schemas.js";
+import type { GroupEffects } from "./chat/groups.js";
 import {
   contactIds,
+  groupIdsOf,
   lastSeenOf,
   markDelivered,
   markRead,
@@ -18,6 +20,9 @@ import { HttpError } from "./errors.js";
 // Room personnelle d'un utilisateur : tous ses onglets / appareils connectés y sont.
 // Pour envoyer quelque chose à un utilisateur, on émet vers sa room.
 export const userRoom = (userId: string) => `user:${userId}`;
+// Room d'un groupe : tous les sockets de tous ses membres. Un message de groupe
+// est émis UNE fois vers cette room, Socket.io le distribue à chacun.
+export const groupRoom = (groupId: string) => `group:${groupId}`;
 
 type Ack = (response: { ok: boolean; error?: string; [key: string]: unknown }) => void;
 
@@ -45,21 +50,28 @@ export function attachSocket(server: http.Server, { typingTimeoutMs = 3000 }: So
 
   // Authentification au moment de la connexion (handshake) :
   // le client envoie son access token dans `auth.token`. Sans token valide, connexion refusée.
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token;
     try {
       if (typeof token !== "string") throw new Error();
       socket.data.userId = verifyAccessToken(token);
-      next();
     } catch {
-      next(new Error("UNAUTHORIZED"));
+      return next(new Error("UNAUTHORIZED"));
+    }
+    try {
+      // Groupes à rejoindre, chargés AVANT la connexion : le socket est dans ses rooms
+      // dès le premier instant (rejointes de façon synchrone dans "connection").
+      socket.data.groupIds = await groupIdsOf(socket.data.userId);
+      next();
+    } catch (err) {
+      next(err as Error);
     }
   });
 
   // Prévient chaque expéditeur que ses messages ont été reçus / lus.
   const notifySenders = (updates: StatusUpdate[]) => {
-    for (const { senderId, conversationId, messageIds, userId, status } of updates) {
-      io.to(userRoom(senderId)).emit("message:status", { conversationId, messageIds, userId, status });
+    for (const { senderId, conversationId, messageIds, userId, status, aggregates } of updates) {
+      io.to(userRoom(senderId)).emit("message:status", { conversationId, messageIds, userId, status, aggregates });
     }
   };
 
@@ -131,16 +143,22 @@ export function attachSocket(server: http.Server, { typingTimeoutMs = 3000 }: So
   io.on("connection", (socket) => {
     const userId: string = socket.data.userId;
     socket.join(userRoom(userId));
+    for (const groupId of socket.data.groupIds as string[]) socket.join(groupRoom(groupId));
 
-    // Envoi d'un message : enregistrement, ack à l'émetteur, diffusion au destinataire.
+    // Envoi d'un message : enregistrement, ack à l'émetteur, diffusion aux destinataires.
     handle(socket, "message:send", sendMessageSchema, async ({ conversationId, content, clientId }) => {
-      const { message, recipientIds } = await sendMessage(userId, { conversationId, content });
+      const { message, recipientIds, conversationType } = await sendMessage(userId, { conversationId, content });
       stopTyping(userId, conversationId); // le message est parti : on n'écrit plus
-      for (const recipientId of recipientIds) {
-        io.to(userRoom(recipientId)).emit("message:new", message);
+      if (conversationType === "GROUP") {
+        // Toute la room du groupe : les autres membres ET mes autres onglets.
+        // socket.to(...) exclut uniquement le socket émetteur (il a déjà l'ack).
+        socket.to(groupRoom(conversationId)).emit("message:new", message);
+      } else {
+        for (const recipientId of recipientIds) {
+          io.to(userRoom(recipientId)).emit("message:new", message);
+        }
+        socket.to(userRoom(userId)).emit("message:new", message); // mes autres onglets
       }
-      // Mes autres onglets / appareils (socket.to exclut le socket émetteur).
-      socket.to(userRoom(userId)).emit("message:new", message);
       return { message, clientId };
     });
 
@@ -197,6 +215,26 @@ export function attachSocket(server: http.Server, { typingTimeoutMs = 3000 }: So
   });
 
   return io;
+}
+
+// Diffuse les conséquences d'une action sur un groupe (appelée par les routes HTTP).
+export function broadcastGroupEffects(io: Server, effects: GroupEffects) {
+  const room = groupRoom(effects.groupId);
+  // 1. Les rooms suivent la base : tous les sockets (onglets) des nouveaux membres entrent,
+  //    ceux des partants sortent. Sans ça, un membre retiré continuerait de tout recevoir.
+  for (const id of effects.joinedIds) io.in(userRoom(id)).socketsJoin(room);
+  for (const id of effects.leftIds) {
+    io.in(userRoom(id)).socketsLeave(room);
+    io.to(userRoom(id)).emit("group:removed", { conversationId: effects.groupId });
+  }
+  if (effects.deleted) return;
+  // 2. Les membres restants voient les messages système et la nouvelle composition.
+  for (const message of effects.systemMessages) io.to(room).emit("message:new", message);
+  io.to(room).emit("group:updated", {
+    conversationId: effects.groupId,
+    name: effects.name,
+    members: effects.members,
+  });
 }
 
 // Enregistre un handler d'événement : valide le payload avec Zod, exécute,

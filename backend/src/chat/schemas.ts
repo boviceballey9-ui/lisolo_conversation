@@ -36,4 +36,14 @@ export const presenceGetSchema = z.object({
   userIds: z.array(z.uuid()).min(1).max(200),
 });
 
+// --- Groupes ---
+
+const groupName = z.string().trim().min(1, "Nom du groupe obligatoire").max(100, "100 caractères maximum");
+const memberPhones = z.array(phone).min(1, "Ajoutez au moins un membre").max(256, "256 membres maximum");
+
+export const createGroupSchema = z.object({ name: groupName, phones: memberPhones });
+export const renameGroupSchema = z.object({ name: groupName });
+export const addMembersSchema = z.object({ phones: memberPhones });
+export const promoteAdminSchema = z.object({ userId: z.uuid() });
+
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;

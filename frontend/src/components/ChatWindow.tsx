@@ -20,6 +20,8 @@ interface Props {
   onDraftChange: (draft: string) => void;
   onLoadOlder: () => Promise<void>;
   onBack: () => void;
+  onOpenGroupInfo: () => void;
+  onOpenMessageInfo: (messageId: string) => void;
 }
 
 export function ChatWindow({
@@ -32,7 +34,10 @@ export function ChatWindow({
   onDraftChange,
   onLoadOlder,
   onBack,
+  onOpenGroupInfo,
+  onOpenMessageInfo,
 }: Props) {
+  const isGroup = conversation.type === "GROUP";
   const [draft, setDraft] = useState("");
   const [loadingOlder, setLoadingOlder] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -96,15 +101,24 @@ export function ChatWindow({
         <button type="button" className="chat__back" onClick={onBack} aria-label="Retour aux discussions">
           ←
         </button>
-        <Avatar name={title} size={40} />
-        <div>
-          <div className="chat__title">{title}</div>
-          {status && (
-            <div className={`chat__subtitle${status.highlight ? " chat__subtitle--active" : ""}`} aria-live="polite">
-              {status.text}
-            </div>
-          )}
-        </div>
+        {/* En groupe, cliquer sur l'en-tête ouvre « Infos du groupe », comme WhatsApp. */}
+        <button
+          type="button"
+          className="chat__identity"
+          onClick={isGroup ? onOpenGroupInfo : undefined}
+          disabled={!isGroup}
+          aria-label={isGroup ? "Infos du groupe" : undefined}
+        >
+          <Avatar name={title} size={40} />
+          <div className="chat__identity-text">
+            <div className="chat__title">{title}</div>
+            {status && (
+              <div className={`chat__subtitle${status.highlight ? " chat__subtitle--active" : ""}`} aria-live="polite">
+                {status.text}
+              </div>
+            )}
+          </div>
+        </button>
       </header>
 
       <div className="chat__messages" ref={scrollRef}>
@@ -116,13 +130,41 @@ export function ChatWindow({
         {messages.map((m, i) => {
           const mine = m.senderId === meId;
           const day = formatDayLabel(m.createdAt);
-          const showDay = i === 0 || formatDayLabel(messages[i - 1].createdAt) !== day;
+          const previous = messages[i - 1];
+          const showDay = i === 0 || formatDayLabel(previous.createdAt) !== day;
+
+          // Événement de groupe : pastille centrée, sans bulle ni coches.
+          if (m.type === "SYSTEM") {
+            return (
+              <Fragment key={m.id}>
+                {showDay && <div className="chat__day">{day}</div>}
+                <div className="chat__system">{m.content}</div>
+              </Fragment>
+            );
+          }
+
+          // En groupe, le nom de l'auteur au-dessus de sa bulle (une fois par série de messages).
+          const showSender =
+            isGroup && !mine && (showDay || previous.senderId !== m.senderId || previous.type === "SYSTEM");
+          const canInspect = mine && !m.pending && !m.failed;
           return (
             <Fragment key={m.id}>
               {showDay && <div className="chat__day">{day}</div>}
               <div className={`bubble ${mine ? "bubble--mine" : "bubble--theirs"}`}>
+                {showSender && <span className="bubble__sender">{m.senderName}</span>}
                 <span className="bubble__text">{m.content}</span>
                 <span className="bubble__meta">
+                  {canInspect && (
+                    <button
+                      type="button"
+                      className="bubble__info"
+                      onClick={() => onOpenMessageInfo(m.id)}
+                      aria-label="Infos du message"
+                      title="Infos du message"
+                    >
+                      Infos
+                    </button>
+                  )}
                   {formatTime(m.createdAt)}
                   {mine && !m.failed && <Ticks status={m.status} pending={m.pending} />}
                   {m.failed && <span className="bubble__failed">Non envoyé</span>}

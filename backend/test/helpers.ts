@@ -18,8 +18,10 @@ export async function createUser(name = "Utilisateur") {
 
 // Démarre un vrai serveur HTTP + Socket.io sur un port libre (port 0 = choisi par l'OS).
 export async function startServer(options?: SocketOptions) {
-  const server = http.createServer(createApp());
+  const app = createApp();
+  const server = http.createServer(app);
   const io = attachSocket(server, options);
+  app.set("io", io); // comme index.ts : les routes de groupe diffusent en temps réel
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as AddressInfo;
   return {

@@ -58,6 +58,15 @@ Invoke-RestMethod http://localhost:4000/api/health
 | GET | `/api/conversations` | Mes conversations, avec le dernier message et le nombre de non-lus |
 | POST | `/api/conversations` | `{ phone }` → démarre (ou retrouve) une discussion avec ce numéro |
 | GET | `/api/conversations/:id/messages?limit=30&before=<id>` | Historique paginé → `{ messages, nextCursor }` |
+| GET | `/api/conversations/:id/messages/:messageId/info` | Infos d'un de mes messages : qui l'a reçu / lu, et quand |
+| POST | `/api/groups` | `{ name, phones }` → crée un groupe (j'en suis admin) |
+| PATCH | `/api/groups/:id` | `{ name }` → renomme (admin) |
+| POST | `/api/groups/:id/members` | `{ phones }` → ajoute des membres (admin) |
+| DELETE | `/api/groups/:id/members/:userId` | Retire un membre (admin) |
+| POST | `/api/groups/:id/admins` | `{ userId }` → nomme un admin (admin) |
+| POST | `/api/groups/:id/leave` | Quitter le groupe |
+
+Un membre non admin reçoit **403** sur les actions d'admin ; un non-membre reçoit **404**.
 
 ### Temps réel (Socket.io, même port que l'API)
 
@@ -69,7 +78,9 @@ Connexion avec `auth: { token: <accessToken> }`.
 | client → serveur | `message:delivered` | `{ messageIds }` (✓✓) |
 | client → serveur | `message:read` | `{ conversationId }` (✓✓ bleu) |
 | serveur → client | `message:new` | le message |
-| serveur → client | `message:status` | `{ conversationId, messageIds, userId, status }` |
+| serveur → client | `message:status` | `{ conversationId, messageIds, userId, status, aggregates }` (`aggregates` : statut global, bleu quand tous ont lu) |
+| serveur → client | `group:updated` | `{ conversationId, name, members }` |
+| serveur → client | `group:removed` | `{ conversationId }` (vous avez quitté le groupe ou en avez été retiré) |
 | client → serveur | `typing:start` / `typing:stop` | `{ conversationId }` (arrêt automatique après 3 s sans `typing:start`) |
 | client → serveur | `presence:get` | `{ userIds }` → ack `{ ok, presence: [{ userId, online, lastSeenAt }] }` |
 | serveur → client | `typing:update` | `{ conversationId, userId, isTyping }` |
@@ -103,6 +114,8 @@ Les tests utilisent une base séparée (`TEST_DATABASE_URL`, créée et migrée 
 - http://localhost:5173/ : discussions (protégé)
 
 Pour essayer le chat : créez deux comptes (une fenêtre normale + une fenêtre de navigation privée), puis « Nouvelle discussion » avec le numéro de l'autre compte.
+
+Pour essayer les groupes : un troisième compte (autre navigateur ou autre profil), puis « Nouveau groupe ». Cliquez sur l'en-tête du groupe pour ouvrir « Infos du groupe », et sur « Infos » dans une de vos bulles pour voir qui a lu.
 
 ## Notes
 

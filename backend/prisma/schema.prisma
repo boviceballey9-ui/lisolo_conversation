@@ -33,6 +33,7 @@ enum MessageType {
   AUDIO
   VIDEO
   DOCUMENT
+  SYSTEM // événement de groupe (« Alice a ajouté Bob »), sans accusés de réception
 
   @@map("message_type")
 }
@@ -126,8 +127,10 @@ model Message {
 model MessageStatus {
   messageId String         @map("message_id") @db.Uuid
   userId    String         @map("user_id") @db.Uuid // le destinataire
-  status    DeliveryStatus @default(SENT)
-  updatedAt DateTime       @default(now()) @updatedAt @map("updated_at")
+  status      DeliveryStatus @default(SENT)
+  deliveredAt DateTime?      @map("delivered_at") // arrivé sur l'appareil (« Distribué »)
+  readAt      DateTime?      @map("read_at") // lu (« Lu par » dans « Infos du message »)
+  updatedAt   DateTime       @default(now()) @updatedAt @map("updated_at")
 
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)

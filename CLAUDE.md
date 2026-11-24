@@ -84,6 +84,18 @@ Réponds toujours en français.
 - Saisie : `isTyping: true` émis seulement au premier `typing:start` ; les suivants relancent le minuteur (`typingTimeoutMs`, 3 s par défaut, option de `attachSocket` — 200 ms dans les tests). Arrêt aussi à `typing:stop`, à `message:send`, et à la déconnexion du socket qui a signalé la saisie.
 - Front : `typing:start` limité à 1 toutes les 2 s (doit rester < `typingTimeoutMs`) ; à chaque (re)connexion, l'état présence/saisie est vidé puis la présence redemandée.
 
+### Groupes
+
+- **Gestion par HTTP** (`src/routes/groups.ts` → `src/chat/groups.ts`), messages toujours par socket. Les routes diffusent via `req.app.get("io")`, posé par `index.ts` et `startServer` (`app.set("io", io)`). Absent dans les tests HTTP purs avec `createApp()` : rien n'est diffusé.
+- **Rooms `group:<id>`** : rejointes à la connexion (`groupIdsOf` chargé dans le middleware `io.use`, avant `connection`). Après un ajout ou un départ, `broadcastGroupEffects` synchronise les rooms de tous les sockets de l'utilisateur (`io.in(userRoom).socketsJoin/socketsLeave`), puis émet `group:removed` aux partants et `message:new` (système) + `group:updated { conversationId, name, members }` à la room. Un message de groupe part en `socket.to(groupRoom)` ; le privé reste sur les rooms `user:<id>`.
+- **Permissions vérifiées dans le service** : non-membre ou pas un groupe → 404 (on ne révèle pas l'existence) ; membre non admin → 403 (`forbidden()`). Admin : ajouter, retirer (pas soi-même → 400), nommer admin, renommer. Tout membre : quitter.
+- Chaque mutation tourne dans `withGroupLock` (transaction interactive + `SELECT … FOR UPDATE` sur la conversation). Sans ce verrou, deux admins qui partent en même temps laissent un groupe sans admin : le test « verrou » échoue alors à coup sûr.
+- Départ du dernier admin : le membre le plus ancien (`joinedAt`, puis `userId`) devient admin. Plus aucun membre → groupe supprimé. Départ ou retrait = **suppression de la ligne `participants`** : le groupe disparaît chez l'ancien membre (pas d'historique en lecture seule). Ses statuts non lus sont supprimés pour ne pas bloquer le ✓✓ bleu.
+- **Messages système** : `type: SYSTEM`, `senderId` = auteur de l'action, texte français dans `content`, **aucune ligne `message_status`** (ni coches, ni non-lu). `createdAt` fixé côté Node, strictement croissant : en PostgreSQL, `now()` vaut l'heure de début de transaction, donc deux messages de la même transaction auraient la même date.
+- Accusés : `message:status` contient aussi `aggregates: [{ id, status }]` (statut global = le moins avancé parmi les destinataires). Le front affiche `aggregates`, pas le `status` individuel. `message_status.delivered_at` / `read_at` alimentent `GET /api/conversations/:id/messages/:messageId/info` (expéditeur seulement, sinon 404).
+- DTO message : `senderName` inclus (nom affiché en groupe, même pour un ancien membre). Résumé de conversation : `members: [{ user, role, joinedAt }]` pour un groupe (moi compris), `otherUser` pour le privé.
+- Photo de groupe **pas encore gérée** (upload MinIO à venir) : l'avatar affiche les initiales.
+
 ## Tests
 
 - `test/globalSetup.ts` crée la base `whatsapp_test` si besoin et y applique `prisma migrate deploy` ; `test/setup.ts` redirige `DATABASE_URL` vers `TEST_DATABASE_URL` (garde-fou : refuse si identique à la base de dev) et fait un `TRUNCATE` de toutes les tables avant **chaque** test. Ajouter une table → l'ajouter à ce `TRUNCATE`.

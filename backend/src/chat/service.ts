@@ -11,10 +11,11 @@ export type DeliveryStatus = "SENT" | "DELIVERED" | "READ";
 const STATUS_RANK: Record<DeliveryStatus, number> = { SENT: 0, DELIVERED: 1, READ: 2 };
 
 // Champs lus pour chaque message.
-const messageSelect = {
+export const messageSelect = {
   id: true,
   conversationId: true,
   senderId: true,
+  sender: { select: { name: true } }, // affiché au-dessus des bulles dans un groupe
   type: true,
   content: true,
   createdAt: true,
@@ -23,24 +24,39 @@ const messageSelect = {
 
 type MessageRow = Prisma.MessageGetPayload<{ select: typeof messageSelect }>;
 
-// Forme envoyée au client. `status` = le statut le moins avancé parmi les destinataires
-// (en 1-à-1 : celui de l'unique destinataire). C'est ce qui donne ✓ / ✓✓ / ✓✓ bleu.
-export function toMessageDTO(m: MessageRow) {
-  const status = m.statuses.reduce<DeliveryStatus>(
+// Statut « global » d'un message = le moins avancé parmi ses destinataires.
+// En 1-à-1 : celui de l'unique destinataire. En groupe : ✓✓ bleu seulement quand TOUS ont lu.
+export function aggregateStatus(statuses: { status: DeliveryStatus }[]): DeliveryStatus {
+  if (statuses.length === 0) return "SENT";
+  return statuses.reduce<DeliveryStatus>(
     (min, s) => (STATUS_RANK[s.status] < STATUS_RANK[min] ? s.status : min),
     "READ",
   );
+}
+
+// Forme envoyée au client. `status` donne ✓ / ✓✓ / ✓✓ bleu.
+export function toMessageDTO(m: MessageRow) {
   return {
     id: m.id,
     conversationId: m.conversationId,
     senderId: m.senderId,
+    senderName: m.sender.name,
     type: m.type,
     content: m.content,
     createdAt: m.createdAt,
-    status: m.statuses.length ? status : ("SENT" as DeliveryStatus),
+    status: aggregateStatus(m.statuses),
   };
 }
 export type MessageDTO = ReturnType<typeof toMessageDTO>;
+
+// Un membre de groupe, tel qu'envoyé au client.
+export const memberSelect = {
+  role: true,
+  joinedAt: true,
+  user: { select: publicUserSelect },
+} as const;
+// Les plus anciens d'abord (sert aussi à choisir le prochain admin).
+export const memberOrder: Prisma.ParticipantOrderByWithRelationInput[] = [{ joinedAt: "asc" }, { userId: "asc" }];
 
 // ---------- Conversations ----------
 
@@ -103,10 +119,7 @@ export async function listConversations(meId: string, onlyIds?: string[]) {
       type: true,
       name: true,
       updatedAt: true,
-      participants: {
-        where: { userId: { not: meId } },
-        select: { user: { select: publicUserSelect } },
-      },
+      participants: { orderBy: memberOrder, select: memberSelect },
       messages: {
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
@@ -132,7 +145,9 @@ export async function listConversations(meId: string, onlyIds?: string[]) {
     name: c.name,
     updatedAt: c.updatedAt,
     // En privé : l'autre personne (affiche son nom et sa photo).
-    otherUser: c.type === "PRIVATE" ? (c.participants[0]?.user ?? null) : null,
+    otherUser: c.type === "PRIVATE" ? (c.participants.find((p) => p.user.id !== meId)?.user ?? null) : null,
+    // En groupe : tous les membres, moi compris (pour connaître mon rôle).
+    members: c.type === "GROUP" ? c.participants : null,
     lastMessage: c.messages[0] ? toMessageDTO(c.messages[0]) : null,
     unreadCount: unreadByConversation.get(c.id) ?? 0,
   }));
@@ -172,10 +187,11 @@ export async function listMessages(
 }
 
 export async function sendMessage(senderId: string, { conversationId, content }: { conversationId: string; content: string }) {
-  const participants = await prisma.participant.findMany({
-    where: { conversationId },
-    select: { userId: true },
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { type: true, participants: { select: { userId: true } } },
   });
+  const participants = conversation?.participants ?? [];
   if (!participants.some((p) => p.userId === senderId)) throw notFound("Conversation introuvable");
   const recipientIds = participants.map((p) => p.userId).filter((id) => id !== senderId);
 
@@ -195,7 +211,26 @@ export async function sendMessage(senderId: string, { conversationId, content }:
     prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } }),
   ]);
 
-  return { message: toMessageDTO(message), recipientIds };
+  return { message: toMessageDTO(message), recipientIds, conversationType: conversation!.type };
+}
+
+// « Infos du message » : qui l'a reçu, qui l'a lu, et quand. Réservé à l'expéditeur.
+export async function getMessageInfo(meId: string, conversationId: string, messageId: string) {
+  await assertParticipant(meId, conversationId);
+  const row = await prisma.message.findFirst({
+    where: { id: messageId, conversationId, senderId: meId },
+    select: {
+      ...messageSelect,
+      statuses: {
+        select: { userId: true, status: true, deliveredAt: true, readAt: true, user: { select: publicUserSelect } },
+      },
+    },
+  });
+  if (!row) throw notFound("Message introuvable");
+  const recipients = row.statuses
+    .map(({ user, status, deliveredAt, readAt }) => ({ user, status, deliveredAt, readAt }))
+    .sort((a, b) => a.user.name.localeCompare(b.user.name));
+  return { message: toMessageDTO(row), recipients };
 }
 
 // ---------- Présence ----------
@@ -219,6 +254,15 @@ export async function participantIdsFor(userId: string, conversationId: string):
   return ids;
 }
 
+// Groupes dont l'utilisateur est membre (rooms Socket.io à rejoindre à la connexion).
+export async function groupIdsOf(userId: string): Promise<string[]> {
+  const rows = await prisma.participant.findMany({
+    where: { userId, conversation: { type: "GROUP" } },
+    select: { conversationId: true },
+  });
+  return rows.map((r) => r.conversationId);
+}
+
 export async function setLastSeen(userId: string): Promise<Date> {
   const lastSeenAt = new Date();
   // updateMany : ne lève pas d'erreur si le compte a été supprimé entre-temps.
@@ -239,7 +283,10 @@ export interface StatusUpdate {
   conversationId: string;
   messageIds: string[];
   userId: string; // le destinataire qui a reçu / lu
-  status: DeliveryStatus;
+  status: DeliveryStatus; // SON statut
+  // Statut global de chaque message après ce changement (ce qu'affichent les coches).
+  // En groupe, Bob qui lit ne rend pas le message bleu si Carole ne l'a pas encore lu.
+  aggregates: { id: string; status: DeliveryStatus }[];
 }
 
 // Passe des statuts de `userId` à `status`, UNIQUEMENT vers l'avant
@@ -260,10 +307,30 @@ async function advanceStatuses(
   });
   if (rows.length === 0) return [];
 
-  await prisma.messageStatus.updateMany({
-    where: { ...filter, messageId: { in: rows.map((r) => r.messageId) } },
-    data: { status },
+  // On horodate chaque étape. Un message lu directement depuis SENT a forcément été
+  // reçu au même moment : on remplit aussi deliveredAt.
+  const now = new Date();
+  const ids = rows.map((r) => r.messageId);
+  const base = { ...filter, messageId: { in: ids } };
+  if (status === "DELIVERED") {
+    await prisma.messageStatus.updateMany({ where: base, data: { status, deliveredAt: now } });
+  } else {
+    await prisma.$transaction([
+      prisma.messageStatus.updateMany({
+        where: { ...base, status: "SENT" },
+        data: { status, deliveredAt: now, readAt: now },
+      }),
+      prisma.messageStatus.updateMany({ where: { ...base, status: "DELIVERED" }, data: { status, readAt: now } }),
+    ]);
+  }
+
+  // Statut global de chaque message touché, en tenant compte des AUTRES destinataires.
+  const all = await prisma.messageStatus.findMany({
+    where: { messageId: { in: ids } },
+    select: { messageId: true, status: true },
   });
+  const byMessage = new Map<string, { status: DeliveryStatus }[]>();
+  for (const s of all) byMessage.set(s.messageId, [...(byMessage.get(s.messageId) ?? []), s]);
 
   const groups = new Map<string, StatusUpdate>();
   for (const { messageId, message } of rows) {
@@ -274,8 +341,10 @@ async function advanceStatuses(
       messageIds: [],
       userId,
       status,
+      aggregates: [],
     };
     group.messageIds.push(messageId);
+    group.aggregates.push({ id: messageId, status: aggregateStatus(byMessage.get(messageId) ?? []) });
     groups.set(key, group);
   }
   return [...groups.values()];

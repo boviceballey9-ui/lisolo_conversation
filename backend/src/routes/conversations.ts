@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { listConversations, listMessages, startConversationByPhone } from "../chat/service.js";
+import { getMessageInfo, listConversations, listMessages, startConversationByPhone } from "../chat/service.js";
 import { conversationIdSchema, listMessagesQuerySchema, startConversationSchema } from "../chat/schemas.js";
 import { notFound } from "../errors.js";
 import { requireAuth } from "../middleware/requireAuth.js";
@@ -22,6 +22,18 @@ conversationsRouter.post("/", validateBody(startConversationSchema), async (req,
   try {
     const conversation = await startConversationByPhone(req.userId!, req.body.phone);
     res.json({ conversation });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// « Infos du message » : qui l'a reçu / lu, et quand (expéditeur seulement).
+conversationsRouter.get("/:id/messages/:messageId/info", async (req, res, next) => {
+  try {
+    const id = conversationIdSchema.safeParse(req.params.id);
+    const messageId = conversationIdSchema.safeParse(req.params.messageId);
+    if (!id.success || !messageId.success) throw notFound("Message introuvable");
+    res.json(await getMessageInfo(req.userId!, id.data, messageId.data));
   } catch (err) {
     next(err);
   }

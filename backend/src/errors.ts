@@ -11,3 +11,5 @@ export class HttpError extends Error {
 
 export const notFound = (message = "Introuvable") => new HttpError(404, message);
 export const badRequest = (message: string) => new HttpError(400, message);
+// 403 : on sait qui vous êtes (sinon ce serait 401), mais vous n'avez pas le droit de faire ça.
+export const forbidden = (message = "Action non autorisée") => new HttpError(403, message);

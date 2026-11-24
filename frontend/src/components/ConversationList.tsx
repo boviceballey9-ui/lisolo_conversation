@@ -9,17 +9,18 @@ interface Props {
   conversations: Conversation[];
   activeId: string | null;
   meId: string;
-  typingConversations: Set<string>; // conversations où quelqu'un est en train d'écrire
+  // Conversations où quelqu'un écrit → texte à afficher (« en train d'écrire… », « Alice écrit… »).
+  typingLabels: Record<string, string>;
   onOpen: (id: string) => void;
 }
 
-export function ConversationList({ conversations, activeId, meId, typingConversations, onOpen }: Props) {
+export function ConversationList({ conversations, activeId, meId, typingLabels, onOpen }: Props) {
   if (conversations.length === 0) {
     return (
       <p className="sidebar__empty">
         Aucune discussion pour l'instant.
         <br />
-        Cliquez sur « Nouvelle discussion » pour commencer.
+        Cliquez sur « Nouvelle discussion » ou « Nouveau groupe » pour commencer.
       </p>
     );
   }
@@ -29,6 +30,9 @@ export function ConversationList({ conversations, activeId, meId, typingConversa
       {conversations.map((c) => {
         const last = c.lastMessage;
         const mine = last?.senderId === meId;
+        const system = last?.type === "SYSTEM";
+        // En groupe, on précise qui a écrit : « Alice : salut ».
+        const author = c.type === "GROUP" && last && !mine && !system ? `${last.senderName} : ` : "";
         return (
           <li key={c.id}>
             <button
@@ -45,11 +49,12 @@ export function ConversationList({ conversations, activeId, meId, typingConversa
                   </span>
                 </div>
                 <div className="conv-item__row">
-                  {typingConversations.has(c.id) ? (
-                    <span className="conv-item__preview conv-item__preview--typing">en train d'écrire…</span>
+                  {typingLabels[c.id] ? (
+                    <span className="conv-item__preview conv-item__preview--typing">{typingLabels[c.id]}</span>
                   ) : (
                     <span className="conv-item__preview">
-                      {mine && <Ticks status={last.status} />}
+                      {mine && !system && <Ticks status={last.status} />}
+                      {author}
                       {last?.content ?? <em>Aucun message</em>}
                     </span>
                   )}

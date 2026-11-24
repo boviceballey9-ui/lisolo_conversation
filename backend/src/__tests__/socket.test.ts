@@ -123,12 +123,24 @@ describe("accusés de réception", () => {
 
     const delivered = waitFor(aliceSocket, "message:status");
     await bobSocket.emitWithAck("message:delivered", { messageIds: [message.id] });
-    expect(await delivered).toEqual({ conversationId, messageIds: [message.id], userId: bob.id, status: "DELIVERED" });
+    expect(await delivered).toEqual({
+      conversationId,
+      messageIds: [message.id],
+      userId: bob.id,
+      status: "DELIVERED",
+      aggregates: [{ id: message.id, status: "DELIVERED" }], // 1-à-1 : statut global = celui de Bob
+    });
     expect(await statusOf(message.id, bob.id)).toBe("DELIVERED");
 
     const read = waitFor(aliceSocket, "message:status");
     await bobSocket.emitWithAck("message:read", { conversationId });
-    expect(await read).toEqual({ conversationId, messageIds: [message.id], userId: bob.id, status: "READ" });
+    expect(await read).toEqual({
+      conversationId,
+      messageIds: [message.id],
+      userId: bob.id,
+      status: "READ",
+      aggregates: [{ id: message.id, status: "READ" }],
+    });
     expect(await statusOf(message.id, bob.id)).toBe("READ");
   });
 

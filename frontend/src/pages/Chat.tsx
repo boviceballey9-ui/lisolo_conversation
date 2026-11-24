@@ -8,13 +8,17 @@ import {
   logout,
   type Conversation,
   type DeliveryStatus,
+  type Member,
   type Message,
   type User,
 } from "../api";
 import { Avatar } from "../components/Avatar";
 import { ChatWindow, type ChatMessage } from "../components/ChatWindow";
 import { ConversationList } from "../components/ConversationList";
+import { GroupInfo } from "../components/GroupInfo";
+import { MessageInfo } from "../components/MessageInfo";
 import { NewChat } from "../components/NewChat";
+import { NewGroup } from "../components/NewGroup";
 import { formatLastSeen } from "../format";
 import { createSocket } from "../socket";
 
@@ -28,7 +32,24 @@ interface StatusEvent {
   conversationId: string;
   messageIds: string[];
   userId: string;
-  status: DeliveryStatus;
+  status: DeliveryStatus; // statut du destinataire `userId`
+  // Statut global de chaque message (en groupe : bleu seulement quand TOUS ont lu).
+  aggregates?: { id: string; status: DeliveryStatus }[];
+}
+
+interface GroupState {
+  name: string | null;
+  members: Member[];
+}
+
+// Panneau latéral ouvert à droite de la conversation.
+type Panel = { kind: "group" } | { kind: "message"; messageId: string } | null;
+
+// « Alice écrit… », « Alice et Bob écrivent… », « 3 personnes écrivent… »
+function groupTypingLabel(names: string[]) {
+  if (names.length === 1) return `${names[0]} écrit…`;
+  if (names.length === 2) return `${names[0]} et ${names[1]} écrivent…`;
+  return `${names.length} personnes écrivent…`;
 }
 
 interface Presence {
@@ -61,6 +82,10 @@ export default function Chat() {
   const [threads, setThreads] = useState<Record<string, Thread>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
+  const [showNewGroup, setShowNewGroup] = useState(false);
+  const [panel, setPanel] = useState<Panel>(null);
+  // Incrémenté à chaque accusé reçu : « Infos du message » se recharge.
+  const [statusTick, setStatusTick] = useState(0);
   const [connected, setConnected] = useState(false);
   // Présence de mes contacts, et qui est en train d'écrire dans quelle conversation.
   const [presence, setPresence] = useState<Record<string, Presence>>({});
@@ -105,6 +130,22 @@ export default function Chat() {
     setThreads((t) => ({ ...t, [conversationId]: { items: page.messages, nextCursor: page.nextCursor } }));
   }, []);
 
+  // Nouveau nom / nouveaux membres d'un groupe (événement group:updated ou réponse de l'API).
+  const applyGroupState = useCallback((conversationId: string, { name, members }: GroupState) => {
+    setConversations((list) => list.map((c) => (c.id === conversationId ? { ...c, name, members } : c)));
+  }, []);
+
+  // J'ai quitté le groupe, ou on m'en a retiré : il disparaît de ma liste.
+  const removeConversation = useCallback((conversationId: string) => {
+    setConversations((list) => list.filter((c) => c.id !== conversationId));
+    setThreads(({ [conversationId]: _removed, ...rest }) => rest);
+    setTyping(({ [conversationId]: _removed, ...rest }) => rest);
+    if (activeRef.current === conversationId) {
+      setActiveId(null);
+      setPanel(null);
+    }
+  }, []);
+
   // Connexion temps réel, une fois le profil connu.
   const meId = me?.id;
   useEffect(() => {
@@ -133,6 +174,7 @@ export default function Chat() {
     // Nouveau message (reçu, ou envoyé depuis un autre de mes appareils).
     socket.on("message:new", (message: Message) => {
       const mine = message.senderId === meId;
+      const system = message.type === "SYSTEM"; // pas d'accusé, ne compte pas comme non lu
       const isOpen = activeRef.current === message.conversationId && isVisible();
 
       setThreads((t) => {
@@ -151,23 +193,28 @@ export default function Chat() {
             ...conv,
             lastMessage: message,
             updatedAt: message.createdAt,
-            unreadCount: !mine && !isOpen ? conv.unreadCount + 1 : conv.unreadCount,
+            unreadCount: !mine && !system && !isOpen ? conv.unreadCount + 1 : conv.unreadCount,
           };
           return [updated, ...list.filter((c) => c.id !== conv.id)]; // remonte en haut de la liste
         });
       }
 
-      if (!mine) {
+      if (!mine && !system) {
         socket.emit("message:delivered", { messageIds: [message.id] }); // ✓✓
         if (isOpen) socket.emit("message:read", { conversationId: message.conversationId }); // ✓✓ bleu
       }
     });
 
-    // Mes messages ont été reçus / lus par le destinataire.
-    socket.on("message:status", ({ conversationId, messageIds, status }: StatusEvent) => {
-      const ids = new Set(messageIds);
-      const bump = <M extends Message>(m: M): M =>
-        ids.has(m.id) && RANK[status] > RANK[m.status] ? { ...m, status } : m;
+    // Mes messages ont été reçus / lus par un destinataire.
+    socket.on("message:status", ({ conversationId, messageIds, status, aggregates }: StatusEvent) => {
+      // On affiche le statut GLOBAL : en groupe, Bob qui lit ne rend pas le message bleu
+      // tant que Carole ne l'a pas lu. (Repli sur `status` pour un ancien serveur.)
+      const next = new Map(aggregates?.map((a) => [a.id, a.status]) ?? messageIds.map((id) => [id, status]));
+      const bump = <M extends Message>(m: M): M => {
+        const s = next.get(m.id);
+        return s && RANK[s] > RANK[m.status] ? { ...m, status: s } : m;
+      };
+      setStatusTick((n) => n + 1);
 
       setThreads((t) => {
         const thread = t[conversationId];
@@ -196,11 +243,20 @@ export default function Chat() {
       });
     });
 
+    // Un groupe a changé (nom, membres, rôles).
+    socket.on("group:updated", ({ conversationId, ...state }: GroupState & { conversationId: string }) => {
+      if (conversationsRef.current.some((c) => c.id === conversationId)) applyGroupState(conversationId, state);
+      else listConversations().then(setConversations).catch(() => {}); // on vient d'y être ajouté
+    });
+
+    // On m'a retiré d'un groupe (ou je l'ai quitté depuis un autre onglet).
+    socket.on("group:removed", ({ conversationId }: { conversationId: string }) => removeConversation(conversationId));
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [meId, goToLogin, loadThread]);
+  }, [meId, goToLogin, loadThread, applyGroupState, removeConversation]);
 
   // Demande la présence des contacts dont on ne connaît pas encore l'état
   // (au démarrage, après une reconnexion, quand une nouvelle conversation apparaît).
@@ -263,9 +319,13 @@ export default function Chat() {
   }, [markRead]);
 
   const openConversation = async (id: string) => {
-    if (id !== activeId) stopTyping(); // on quitte la conversation où l'on écrivait
+    if (id !== activeId) {
+      stopTyping(); // on quitte la conversation où l'on écrivait
+      setPanel(null);
+    }
     setActiveId(id);
     setShowNewChat(false);
+    setShowNewGroup(false);
     markRead(id);
     if (!threads[id]) await loadThread(id).catch(() => {});
   };
@@ -305,6 +365,7 @@ export default function Chat() {
       id: clientId,
       conversationId,
       senderId: me.id,
+      senderName: me.name,
       type: "TEXT",
       content,
       createdAt: new Date().toISOString(),
@@ -355,11 +416,27 @@ export default function Chat() {
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
   const thread = activeId ? threads[activeId] : undefined;
-  const typingConversations = new Set(Object.keys(typing).filter((id) => typing[id].length > 0));
+  // Qui écrit, conversation par conversation. En groupe, on nomme les personnes.
+  const typingLabels: Record<string, string> = {};
+  for (const c of conversations) {
+    const userIds = typing[c.id] ?? [];
+    if (userIds.length === 0) continue;
+    if (c.type !== "GROUP") {
+      typingLabels[c.id] = "en train d'écrire…";
+      continue;
+    }
+    const names = userIds.map((id) => c.members?.find((m) => m.user.id === id)?.user.name ?? "Quelqu'un");
+    typingLabels[c.id] = groupTypingLabel(names);
+  }
 
   // Sous-titre de l'en-tête, par ordre de priorité, comme WhatsApp.
   const headerStatus = (c: Conversation): { text: string; highlight?: boolean } | null => {
-    if (typingConversations.has(c.id)) return { text: "en train d'écrire…", highlight: true };
+    if (typingLabels[c.id]) return { text: typingLabels[c.id], highlight: true };
+    if (c.type === "GROUP") {
+      // « Alice, Bob, Vous »
+      const others = (c.members ?? []).filter((m) => m.user.id !== me.id).map((m) => m.user.name);
+      return { text: [...others, "Vous"].join(", ") };
+    }
     if (!c.otherUser) return null;
     const p = presence[c.otherUser.id];
     if (p?.online) return { text: "en ligne" };
@@ -373,8 +450,25 @@ export default function Chat() {
         <header className="sidebar__header">
           <Avatar name={me.name} size={40} />
           <span className="sidebar__me">{me.name}</span>
-          <button type="button" className="btn" onClick={() => setShowNewChat((v) => !v)}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setShowNewChat((v) => !v);
+              setShowNewGroup(false);
+            }}
+          >
             Nouvelle discussion
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setShowNewGroup((v) => !v);
+              setShowNewChat(false);
+            }}
+          >
+            Nouveau groupe
           </button>
           <button type="button" className="btn" onClick={goToLogin}>
             Déconnexion
@@ -382,11 +476,12 @@ export default function Chat() {
         </header>
         {!connected && <div className="sidebar__offline">Connexion au serveur…</div>}
         {showNewChat && <NewChat onStarted={onConversationStarted} onCancel={() => setShowNewChat(false)} />}
+        {showNewGroup && <NewGroup onCreated={onConversationStarted} onCancel={() => setShowNewGroup(false)} />}
         <ConversationList
           conversations={conversations}
           activeId={activeId}
           meId={me.id}
-          typingConversations={typingConversations}
+          typingLabels={typingLabels}
           onOpen={openConversation}
         />
       </aside>
@@ -405,13 +500,33 @@ export default function Chat() {
             onBack={() => {
               stopTyping();
               setActiveId(null);
+              setPanel(null);
             }}
+            onOpenGroupInfo={() => setPanel({ kind: "group" })}
+            onOpenMessageInfo={(messageId) => setPanel({ kind: "message", messageId })}
           />
         ) : (
           <div className="chat-empty">
             <h2>WhatsApp Clone</h2>
             <p>Sélectionnez une discussion ou démarrez-en une nouvelle avec un numéro de téléphone.</p>
           </div>
+        )}
+        {active && panel?.kind === "group" && active.type === "GROUP" && (
+          <GroupInfo
+            conversation={active}
+            meId={me.id}
+            onUpdated={applyGroupState}
+            onLeft={removeConversation}
+            onClose={() => setPanel(null)}
+          />
+        )}
+        {active && panel?.kind === "message" && (
+          <MessageInfo
+            conversationId={active.id}
+            messageId={panel.messageId}
+            refreshKey={statusTick}
+            onClose={() => setPanel(null)}
+          />
         )}
       </main>
     </div>

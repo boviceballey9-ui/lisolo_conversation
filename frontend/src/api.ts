@@ -126,10 +126,20 @@ export interface Message {
   id: string;
   conversationId: string;
   senderId: string;
-  type: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT";
+  senderName: string;
+  // SYSTEM : événement de groupe (« Alice a ajouté Bob »), affiché au centre, sans coches.
+  type: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT" | "SYSTEM";
   content: string | null;
   createdAt: string;
   status: DeliveryStatus;
+}
+
+export type GroupRole = "ADMIN" | "MEMBER";
+
+export interface Member {
+  user: User;
+  role: GroupRole;
+  joinedAt: string;
 }
 
 export interface Conversation {
@@ -137,7 +147,8 @@ export interface Conversation {
   type: "PRIVATE" | "GROUP";
   name: string | null;
   updatedAt: string;
-  otherUser: User | null;
+  otherUser: User | null; // conversation privée : l'autre personne
+  members: Member[] | null; // groupe : tous les membres, moi compris
   lastMessage: Message | null;
   unreadCount: number;
 }
@@ -155,6 +166,49 @@ export async function startConversation(phone: string) {
   });
   return conversation;
 }
+
+export interface MessageInfo {
+  message: Message;
+  recipients: { user: User; status: DeliveryStatus; deliveredAt: string | null; readAt: string | null }[];
+}
+
+export function getMessageInfo(conversationId: string, messageId: string) {
+  return apiFetch<MessageInfo>(`/api/conversations/${conversationId}/messages/${messageId}/info`);
+}
+
+// ---------- Groupes ----------
+// Les boutons d'administration ne s'affichent que pour les admins, mais c'est le SERVEUR
+// qui vérifie les droits (403 sinon) : l'interface n'est qu'un confort.
+
+interface GroupState {
+  name: string | null;
+  members: Member[];
+}
+
+const jsonInit = (method: string, body?: unknown): RequestInit => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: body === undefined ? undefined : JSON.stringify(body),
+});
+
+export async function createGroup(name: string, phones: string[]) {
+  const { conversation } = await apiFetch<{ conversation: Conversation }>("/api/groups", jsonInit("POST", { name, phones }));
+  return conversation;
+}
+
+export const renameGroup = (groupId: string, name: string) =>
+  apiFetch<GroupState>(`/api/groups/${groupId}`, jsonInit("PATCH", { name }));
+
+export const addGroupMembers = (groupId: string, phones: string[]) =>
+  apiFetch<GroupState>(`/api/groups/${groupId}/members`, jsonInit("POST", { phones }));
+
+export const removeGroupMember = (groupId: string, userId: string) =>
+  apiFetch<GroupState>(`/api/groups/${groupId}/members/${userId}`, jsonInit("DELETE"));
+
+export const promoteGroupAdmin = (groupId: string, userId: string) =>
+  apiFetch<GroupState>(`/api/groups/${groupId}/admins`, jsonInit("POST", { userId }));
+
+export const leaveGroup = (groupId: string) => apiFetch<{ left: true }>(`/api/groups/${groupId}/leave`, jsonInit("POST"));
 
 export async function listMessages(conversationId: string, before?: string) {
   const query = before ? `?before=${encodeURIComponent(before)}` : "";
