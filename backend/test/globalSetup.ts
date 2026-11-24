@@ -26,4 +26,11 @@ export default async function globalSetup() {
     env: { ...process.env, DATABASE_URL: testUrl },
     stdio: "inherit",
   });
+
+  // Bucket MinIO de test : créé si besoin, vidé des fichiers de la session précédente.
+  // Import dynamique : storage.ts lit la configuration, qui doit déjà pointer vers le bucket de test.
+  const { emptyBucket, ensureBucket } = await import("../src/storage.js");
+  const bucket = process.env.MINIO_BUCKET!;
+  await ensureBucket(bucket);
+  await emptyBucket(bucket);
 }

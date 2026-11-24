@@ -130,8 +130,16 @@ export interface Message {
   // SYSTEM : événement de groupe (« Alice a ajouté Bob »), affiché au centre, sans coches.
   type: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT" | "SYSTEM";
   content: string | null;
+  media: MediaInfo | null; // pièce jointe (le fichier se lit via getMediaUrl)
   createdAt: string;
   status: DeliveryStatus;
+}
+
+export interface MediaInfo {
+  id: string;
+  mimeType: string;
+  size: number;
+  fileName: string | null;
 }
 
 export type GroupRole = "ADMIN" | "MEMBER";
@@ -146,6 +154,7 @@ export interface Conversation {
   id: string;
   type: "PRIVATE" | "GROUP";
   name: string | null;
+  photoId: string | null; // photo du groupe
   updatedAt: string;
   otherUser: User | null; // conversation privée : l'autre personne
   members: Member[] | null; // groupe : tous les membres, moi compris
@@ -180,8 +189,9 @@ export function getMessageInfo(conversationId: string, messageId: string) {
 // Les boutons d'administration ne s'affichent que pour les admins, mais c'est le SERVEUR
 // qui vérifie les droits (403 sinon) : l'interface n'est qu'un confort.
 
-interface GroupState {
+export interface GroupState {
   name: string | null;
+  photoId?: string | null;
   members: Member[];
 }
 
@@ -207,6 +217,33 @@ export const removeGroupMember = (groupId: string, userId: string) =>
 
 export const promoteGroupAdmin = (groupId: string, userId: string) =>
   apiFetch<GroupState>(`/api/groups/${groupId}/admins`, jsonInit("POST", { userId }));
+
+export const setGroupPhoto = (groupId: string, mediaId: string | null) =>
+  apiFetch<GroupState>(`/api/groups/${groupId}/photo`, jsonInit("PATCH", { mediaId }));
+
+// ---------- Médias (le fichier lui-même va directement à MinIO, voir media.ts) ----------
+
+export interface UploadTicket {
+  uploadUrl: string; // URL présignée PUT vers MinIO (5 min)
+  objectKey: string;
+  expiresIn: number;
+  headers: Record<string, string>; // à envoyer tels quels : ils font partie de la signature
+}
+
+export const requestUploadUrl = (mimeType: string, size: number, fileName?: string) =>
+  apiFetch<UploadTicket>("/api/media/upload-url", jsonInit("POST", { mimeType, size, fileName }));
+
+export async function registerMedia(objectKey: string, fileName?: string) {
+  const { media } = await apiFetch<{ media: MediaInfo }>("/api/media", jsonInit("POST", { objectKey, fileName }));
+  return media;
+}
+
+export const getMediaUrl = (mediaId: string) => apiFetch<{ url: string; expiresAt: string }>(`/api/media/${mediaId}/url`);
+
+export async function setMyAvatar(mediaId: string | null) {
+  const { user } = await apiFetch<{ user: User }>("/api/users/me/avatar", jsonInit("PATCH", { mediaId }));
+  return user;
+}
 
 export const leaveGroup = (groupId: string) => apiFetch<{ left: true }>(`/api/groups/${groupId}/leave`, jsonInit("POST"));
 

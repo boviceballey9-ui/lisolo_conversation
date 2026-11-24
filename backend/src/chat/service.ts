@@ -4,6 +4,7 @@
 import { Prisma } from "../generated/prisma/client.js";
 import { prisma } from "../db.js";
 import { badRequest, notFound } from "../errors.js";
+import { mediaSelect, ownMedia } from "../media/service.js";
 import { publicUserSelect } from "../routes/users.js";
 
 export type DeliveryStatus = "SENT" | "DELIVERED" | "READ";
@@ -18,6 +19,7 @@ export const messageSelect = {
   sender: { select: { name: true } }, // affiché au-dessus des bulles dans un groupe
   type: true,
   content: true,
+  media: { select: mediaSelect }, // métadonnées seulement : le fichier se lit via GET /api/media/:id/url
   createdAt: true,
   statuses: { select: { userId: true, status: true } },
 } as const;
@@ -43,6 +45,7 @@ export function toMessageDTO(m: MessageRow) {
     senderName: m.sender.name,
     type: m.type,
     content: m.content,
+    media: m.media,
     createdAt: m.createdAt,
     status: aggregateStatus(m.statuses),
   };
@@ -118,6 +121,7 @@ export async function listConversations(meId: string, onlyIds?: string[]) {
       id: true,
       type: true,
       name: true,
+      photoId: true,
       updatedAt: true,
       participants: { orderBy: memberOrder, select: memberSelect },
       messages: {
@@ -143,6 +147,7 @@ export async function listConversations(meId: string, onlyIds?: string[]) {
     id: c.id,
     type: c.type,
     name: c.name,
+    photoId: c.photoId, // photo du groupe (id de média)
     updatedAt: c.updatedAt,
     // En privé : l'autre personne (affiche son nom et sa photo).
     otherUser: c.type === "PRIVATE" ? (c.participants.find((p) => p.user.id !== meId)?.user ?? null) : null,
@@ -186,7 +191,10 @@ export async function listMessages(
   };
 }
 
-export async function sendMessage(senderId: string, { conversationId, content }: { conversationId: string; content: string }) {
+export async function sendMessage(
+  senderId: string,
+  { conversationId, content, mediaId }: { conversationId: string; content?: string; mediaId?: string },
+) {
   const conversation = await prisma.conversation.findUnique({
     where: { id: conversationId },
     select: { type: true, participants: { select: { userId: true } } },
@@ -194,6 +202,11 @@ export async function sendMessage(senderId: string, { conversationId, content }:
   const participants = conversation?.participants ?? [];
   if (!participants.some((p) => p.userId === senderId)) throw notFound("Conversation introuvable");
   const recipientIds = participants.map((p) => p.userId).filter((id) => id !== senderId);
+  if (!content && !mediaId) throw badRequest("Message vide");
+
+  // Pièce jointe : uniquement un fichier que J'AI envoyé. Le type du message (photo, vidéo,
+  // vocal, document) est déduit du type MIME réel, pas de ce que dit le client.
+  const media = mediaId ? await ownMedia(senderId, mediaId) : null;
 
   // Transaction : le message, ses statuts et la date d'activité de la conversation
   // sont enregistrés ensemble, ou pas du tout.
@@ -202,8 +215,9 @@ export async function sendMessage(senderId: string, { conversationId, content }:
       data: {
         conversationId,
         senderId,
-        type: "TEXT",
-        content,
+        type: media ? media.category : "TEXT",
+        content: content || null,
+        mediaId: media?.id ?? null,
         statuses: { create: recipientIds.map((userId) => ({ userId })) }, // SENT par défaut
       },
       select: messageSelect,

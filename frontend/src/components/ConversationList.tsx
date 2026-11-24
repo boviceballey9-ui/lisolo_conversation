@@ -1,5 +1,5 @@
 import type { Conversation } from "../api";
-import { formatListDate } from "../format";
+import { formatListDate, messagePreview } from "../format";
 import { Avatar } from "./Avatar";
 import { Ticks } from "./Ticks";
 
@@ -40,7 +40,7 @@ export function ConversationList({ conversations, activeId, meId, typingLabels, 
               className={`conv-item${c.id === activeId ? " conv-item--active" : ""}`}
               onClick={() => onOpen(c.id)}
             >
-              <Avatar name={conversationTitle(c)} size={48} />
+              <Avatar name={conversationTitle(c)} mediaId={c.otherUser?.avatarId ?? c.photoId} size={48} />
               <div className="conv-item__body">
                 <div className="conv-item__row">
                   <span className="conv-item__name">{conversationTitle(c)}</span>
@@ -55,7 +55,7 @@ export function ConversationList({ conversations, activeId, meId, typingLabels, 
                     <span className="conv-item__preview">
                       {mine && !system && <Ticks status={last.status} />}
                       {author}
-                      {last?.content ?? <em>Aucun message</em>}
+                      {last ? messagePreview(last) : <em>Aucun message</em>}
                     </span>
                   )}
                   {c.unreadCount > 0 && (

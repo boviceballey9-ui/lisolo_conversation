@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getMessageInfo, type MessageInfo as Info } from "../api";
 import { formatListDate, formatTime } from "../format";
 import { Avatar } from "./Avatar";
+import { MediaContent } from "./MediaContent";
 
 interface Props {
   conversationId: string;
@@ -44,7 +45,7 @@ export function MessageInfo({ conversationId, messageId, refreshKey, onClose }: 
             const at = date(r);
             return (
               <li key={r.user.id} className="member">
-                <Avatar name={r.user.name} size={36} />
+                <Avatar name={r.user.name} mediaId={r.user.avatarId} size={36} />
                 <div className="member__body">
                   <div className="member__name">{r.user.name}</div>
                   {at && <div className="member__phone">{when(at)}</div>}
@@ -70,7 +71,8 @@ export function MessageInfo({ conversationId, messageId, refreshKey, onClose }: 
         {info && (
           <>
             <div className="bubble bubble--mine info-preview">
-              <span className="bubble__text">{info.message.content}</span>
+              {info.message.media && <MediaContent type={info.message.type} media={info.message.media} />}
+              {info.message.content && <span className="bubble__text">{info.message.content}</span>}
               <span className="bubble__meta">{formatTime(info.message.createdAt)}</span>
             </div>
             {section("Lu par", read, (r) => r.readAt)}

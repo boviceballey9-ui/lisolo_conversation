@@ -94,7 +94,36 @@ Réponds toujours en français.
 - **Messages système** : `type: SYSTEM`, `senderId` = auteur de l'action, texte français dans `content`, **aucune ligne `message_status`** (ni coches, ni non-lu). `createdAt` fixé côté Node, strictement croissant : en PostgreSQL, `now()` vaut l'heure de début de transaction, donc deux messages de la même transaction auraient la même date.
 - Accusés : `message:status` contient aussi `aggregates: [{ id, status }]` (statut global = le moins avancé parmi les destinataires). Le front affiche `aggregates`, pas le `status` individuel. `message_status.delivered_at` / `read_at` alimentent `GET /api/conversations/:id/messages/:messageId/info` (expéditeur seulement, sinon 404).
 - DTO message : `senderName` inclus (nom affiché en groupe, même pour un ancien membre). Résumé de conversation : `members: [{ user, role, joinedAt }]` pour un groupe (moi compris), `otherUser` pour le privé.
-- Photo de groupe **pas encore gérée** (upload MinIO à venir) : l'avatar affiche les initiales.
+- Photo de groupe : `PATCH /api/groups/:id/photo { mediaId | null }` (admin, image uploadée par lui), message système + `group:updated` avec `photoId`.
+
+## Médias (MinIO, URL présignées)
+
+- **Le fichier ne passe jamais par le backend.** Parcours :
+  1. `POST /api/media/upload-url { mimeType, size, fileName? }` : le backend vérifie le type (liste blanche, `src/media/rules.ts`) et la taille (images et vocaux 16 Mo, vidéos 64 Mo, documents 100 Mo), puis signe un PUT valable 5 min.
+  2. Le navigateur fait un PUT direct vers MinIO (XHR pour la progression).
+  3. `POST /api/media { objectKey }` : `HeadObject`, revérification du type et de la taille réels, puis création de la ligne `media`.
+  4. Envoi du message : `message:send { conversationId, mediaId }`. Le `type` du message est déduit du MIME par le serveur.
+- `Content-Type` **et** `Content-Length` sont signés (`signableHeaders` dans `src/storage.ts`) : MinIO refuse lui-même (403) un autre type ou une autre taille. Les tests le vérifient.
+- Clés `users/<uploaderId>/<uuid>` + colonne `media.uploader_id`. On n'enregistre que ses propres clés, et on n'attache (message, avatar, photo de groupe) que **ses propres** médias (`ownMedia`, sinon 404).
+- Lecture : `GET /api/media/:id/url` renvoie une URL GET présignée de 5 min si `canRead` l'autorise (sinon 404) :
+  - l'uploader ;
+  - un membre d'une conversation où le média est attaché à un message, ou dont il est la photo ;
+  - tout le monde pour une photo de profil.
+
+  Un membre retiré perd l'accès. Pour les documents, la réponse inclut `Content-Disposition: attachment`.
+- Front : `src/media.ts` (`uploadFile`, `useMediaUrl` avec cache). Une balise `<img>` ne peut pas envoyer l'en-tête Bearer, d'où les URL présignées.
+- **Pièges** :
+  - S3Client avec `forcePathStyle: true` ;
+  - `requestChecksumCalculation` / `responseChecksumValidation: "WHEN_REQUIRED"` : sinon le SDK ajoute un CRC32 aux URL présignées et l'envoi depuis le navigateur échoue ;
+  - CORS côté MinIO via `MINIO_API_CORS_ALLOW_ORIGIN` (= `FRONTEND_ORIGIN`) dans `docker-compose.yml` ; il faut recréer le conteneur après un changement.
+- `index.ts` appelle `ensureBucket()` au démarrage. Si MinIO est injoignable, une erreur est journalisée mais le serveur démarre quand même.
+- Tests : vrai MinIO, bucket `MINIO_TEST_BUCKET` (`loadTestEnv` remplace `MINIO_BUCKET`, avec un garde-fou ; `globalSetup` le crée et le vide). `config.storage.bucket` est un getter pour cette raison.
+- **Limites connues** :
+  - le backend utilise les identifiants **root** de MinIO ;
+  - les fichiers orphelins (uploadés mais jamais enregistrés, ou jamais attachés) ne sont pas nettoyés ;
+  - `MINIO_ENDPOINT` doit être joignable par le **navigateur** (`localhost` : même machine seulement) ;
+  - l'URL d'une vidéo ou d'un audio peut expirer pendant une lecture longue ;
+  - pas de légende sur les médias.
 
 ## Tests
 
@@ -118,5 +147,6 @@ Réponds toujours en français.
 ## Services Docker : pièges connus
 
 - **PostgreSQL** est exposé sur **5433** côté Windows (`POSTGRES_PORT`), car un PostgreSQL 18 natif occupe déjà 5432 sur la machine. Sans ça, `localhost:5432` atteint silencieusement la mauvaise base.
+- **MinIO CORS** : `MINIO_API_CORS_ALLOW_ORIGIN` doit contenir l'origine du frontend (PUT direct depuis le navigateur). Pour vérifier : `curl.exe -i -X OPTIONS http://localhost:9000/media/x -H "Origin: http://localhost:5173" -H "Access-Control-Request-Method: PUT"`.
 - **MinIO** utilise `cgr.dev/chainguard/minio` (`minio/minio` a été retiré de Docker Hub). Entrypoint déjà `/usr/bin/minio`, donc `command` ne contient que les arguments. Tourne en UID 65532 : garder un **volume nommé**, jamais un bind mount d'un dossier Windows (erreurs de permissions). API 9000, console 9001.
 - **coturn** : pas de `network_mode: host` (non supporté par Docker Desktop) ; ports 3478 udp/tcp + relais 49160-49200/udp publiés explicitement. Configuration uniquement par arguments (`command:`). Ne pas ajouter `-n` (l'entrypoint passe chaque argument dans `echo`, qui avale `-n`) ni `--no-cli` (déprécié en 4.19). `TURN_EXTERNAL_IP=127.0.0.1` ne convient qu'en local.

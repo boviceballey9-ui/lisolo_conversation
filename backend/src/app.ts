@@ -5,6 +5,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { authRouter } from "./routes/auth.js";
 import { conversationsRouter } from "./routes/conversations.js";
 import { groupsRouter } from "./routes/groups.js";
+import { mediaRouter } from "./routes/media.js";
 import { usersRouter } from "./routes/users.js";
 
 // Construit l'application Express SANS démarrer le serveur :
@@ -36,6 +37,7 @@ export function createApp() {
   app.use("/api/users", usersRouter);
   app.use("/api/conversations", conversationsRouter);
   app.use("/api/groups", groupsRouter);
+  app.use("/api/media", mediaRouter);
 
   app.use(errorHandler);
   return app;

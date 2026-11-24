@@ -146,8 +146,8 @@ export function attachSocket(server: http.Server, { typingTimeoutMs = 3000 }: So
     for (const groupId of socket.data.groupIds as string[]) socket.join(groupRoom(groupId));
 
     // Envoi d'un message : enregistrement, ack à l'émetteur, diffusion aux destinataires.
-    handle(socket, "message:send", sendMessageSchema, async ({ conversationId, content, clientId }) => {
-      const { message, recipientIds, conversationType } = await sendMessage(userId, { conversationId, content });
+    handle(socket, "message:send", sendMessageSchema, async ({ conversationId, content, mediaId, clientId }) => {
+      const { message, recipientIds, conversationType } = await sendMessage(userId, { conversationId, content, mediaId });
       stopTyping(userId, conversationId); // le message est parti : on n'écrit plus
       if (conversationType === "GROUP") {
         // Toute la room du groupe : les autres membres ET mes autres onglets.
@@ -233,6 +233,7 @@ export function broadcastGroupEffects(io: Server, effects: GroupEffects) {
   io.to(room).emit("group:updated", {
     conversationId: effects.groupId,
     name: effects.name,
+    photoId: effects.photoId,
     members: effects.members,
   });
 }

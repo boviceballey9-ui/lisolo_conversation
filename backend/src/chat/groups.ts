@@ -6,6 +6,7 @@
 import { Prisma } from "../generated/prisma/client.js";
 import { prisma } from "../db.js";
 import { badRequest, forbidden, notFound } from "../errors.js";
+import { ownMedia } from "../media/service.js";
 import { listConversations, memberOrder, memberSelect, messageSelect, toMessageDTO, type MessageDTO } from "./service.js";
 
 type Tx = Prisma.TransactionClient;
@@ -16,6 +17,7 @@ export type Member = Prisma.ParticipantGetPayload<{ select: typeof memberSelect 
 export interface GroupEffects {
   groupId: string;
   name: string | null;
+  photoId: string | null;
   members: Member[]; // instantané après l'action
   systemMessages: MessageDTO[];
   joinedIds: string[]; // à faire entrer dans la room group:<id>
@@ -105,11 +107,12 @@ async function snapshot(
   const group = await tx.conversation.update({
     where: { id: groupId },
     data: { updatedAt: new Date() }, // remonte en haut des listes
-    select: { name: true, participants: { orderBy: memberOrder, select: memberSelect } },
+    select: { name: true, photoId: true, participants: { orderBy: memberOrder, select: memberSelect } },
   });
   return {
     groupId,
     name: group.name,
+    photoId: group.photoId,
     members: group.participants,
     joinedIds: [],
     leftIds: [],
@@ -205,6 +208,21 @@ export function renameGroup(adminId: string, groupId: string, name: string) {
   });
 }
 
+// Photo du groupe (admin). mediaId = null pour la retirer.
+// Le fichier doit être une image que l'admin a lui-même envoyée.
+export async function setGroupPhoto(adminId: string, groupId: string, mediaId: string | null) {
+  const media = mediaId ? await ownMedia(adminId, mediaId) : null;
+  if (media && media.category !== "IMAGE") throw badRequest("La photo du groupe doit être une image");
+
+  return withGroupLock(groupId, async (tx) => {
+    const admin = await requireAdmin(tx, adminId, groupId);
+    await tx.conversation.update({ where: { id: groupId }, data: { photoId: media?.id ?? null } });
+    const text = media ? `${admin.user.name} a changé la photo du groupe` : `${admin.user.name} a retiré la photo du groupe`;
+    const message = await systemMessage(tx, groupId, adminId, text);
+    return snapshot(tx, groupId, { systemMessages: [message] });
+  });
+}
+
 export function leaveGroup(userId: string, groupId: string) {
   return withGroupLock(groupId, async (tx): Promise<GroupEffects> => {
     const me = await loadMembership(tx, userId, groupId);
@@ -220,7 +238,16 @@ export function leaveGroup(userId: string, groupId: string) {
     // Plus personne : le groupe n'a plus de raison d'exister (messages supprimés en cascade).
     if (remaining.length === 0) {
       await tx.conversation.delete({ where: { id: groupId } });
-      return { groupId, name: null, members: [], systemMessages: [], joinedIds: [], leftIds: [userId], deleted: true };
+      return {
+        groupId,
+        name: null,
+        photoId: null,
+        members: [],
+        systemMessages: [],
+        joinedIds: [],
+        leftIds: [userId],
+        deleted: true,
+      };
     }
 
     const messages = [await systemMessage(tx, groupId, userId, `${me.user.name} a quitté le groupe`)];

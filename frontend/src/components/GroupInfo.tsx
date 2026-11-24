@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   addGroupMembers,
   ApiError,
@@ -6,15 +6,17 @@ import {
   promoteGroupAdmin,
   removeGroupMember,
   renameGroup,
+  setGroupPhoto,
   type Conversation,
-  type Member,
+  type GroupState,
 } from "../api";
+import { uploadFile } from "../media";
 import { Avatar } from "./Avatar";
 
 interface Props {
   conversation: Conversation; // un groupe
   meId: string;
-  onUpdated: (conversationId: string, state: { name: string | null; members: Member[] }) => void;
+  onUpdated: (conversationId: string, state: GroupState) => void;
   onLeft: (conversationId: string) => void;
   onClose: () => void;
 }
@@ -29,12 +31,13 @@ export function GroupInfo({ conversation, meId, onUpdated, onLeft, onClose }: Pr
   const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const photoInput = useRef<HTMLInputElement>(null);
 
   // Renommé par un autre admin pendant que le panneau est ouvert : on suit.
   useEffect(() => setName(conversation.name ?? ""), [conversation.name]);
 
   // Exécute une action, affiche l'erreur éventuelle de l'API (ex. 403).
-  const run = async (action: () => Promise<{ name: string | null; members: Member[] } | void>) => {
+  const run = async (action: () => Promise<GroupState | void>) => {
     setBusy(true);
     setError(null);
     try {
@@ -82,7 +85,36 @@ export function GroupInfo({ conversation, meId, onUpdated, onLeft, onClose }: Pr
 
       <div className="side-panel__body">
         <div className="group-card">
-          <Avatar name={conversation.name ?? "Groupe"} size={96} />
+          <Avatar name={conversation.name ?? "Groupe"} mediaId={conversation.photoId} size={96} />
+          {isAdmin && (
+            <div className="group-card__photo-actions">
+              {/* Même mécanisme que les pièces jointes : envoi direct à MinIO, puis PATCH .../photo. */}
+              <button type="button" className="btn" disabled={busy} onClick={() => photoInput.current?.click()}>
+                {conversation.photoId ? "Changer la photo" : "Ajouter une photo"}
+              </button>
+              {conversation.photoId && (
+                <button
+                  type="button"
+                  className="btn btn--danger"
+                  disabled={busy}
+                  onClick={() => run(() => setGroupPhoto(conversation.id, null))}
+                >
+                  Retirer
+                </button>
+              )}
+              <input
+                ref={photoInput}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                hidden
+                onChange={(e) => {
+                  const file = e.currentTarget.files?.[0];
+                  e.currentTarget.value = "";
+                  if (file) run(async () => setGroupPhoto(conversation.id, (await uploadFile(file)).id));
+                }}
+              />
+            </div>
+          )}
           {isAdmin ? (
             <form className="group-card__rename" onSubmit={rename}>
               <input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} aria-label="Nom du groupe" />
@@ -122,7 +154,7 @@ export function GroupInfo({ conversation, meId, onUpdated, onLeft, onClose }: Pr
             const isMe = m.user.id === meId;
             return (
               <li key={m.user.id} className="member">
-                <Avatar name={m.user.name} size={40} />
+                <Avatar name={m.user.name} mediaId={m.user.avatarId} size={40} />
                 <div className="member__body">
                   <div className="member__name">{isMe ? "Vous" : m.user.name}</div>
                   <div className="member__phone">{m.user.phone}</div>

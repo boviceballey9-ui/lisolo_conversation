@@ -12,13 +12,17 @@ export const listMessagesQuerySchema = z.object({
 
 // --- Payloads des événements socket ---
 
-export const sendMessageSchema = z.object({
-  conversationId: z.uuid(),
-  content: z.string().trim().min(1, "Message vide").max(4096, "Message trop long"),
-  // Id temporaire choisi par le client : renvoyé dans l'ack pour remplacer
-  // le message affiché « en attente » par le message enregistré.
-  clientId: z.string().max(64).optional(),
-});
+export const sendMessageSchema = z
+  .object({
+    conversationId: z.uuid(),
+    content: z.string().trim().max(4096, "Message trop long").optional(),
+    // Fichier déjà envoyé à MinIO puis enregistré (POST /api/media).
+    mediaId: z.uuid().optional(),
+    // Id temporaire choisi par le client : renvoyé dans l'ack pour remplacer
+    // le message affiché « en attente » par le message enregistré.
+    clientId: z.string().max(64).optional(),
+  })
+  .refine((m) => !!m.content || !!m.mediaId, { message: "Message vide" });
 
 export const deliveredSchema = z.object({
   messageIds: z.array(z.uuid()).min(1).max(500),
@@ -45,5 +49,20 @@ export const createGroupSchema = z.object({ name: groupName, phones: memberPhone
 export const renameGroupSchema = z.object({ name: groupName });
 export const addMembersSchema = z.object({ phones: memberPhones });
 export const promoteAdminSchema = z.object({ userId: z.uuid() });
+// null = retirer la photo
+export const setPhotoSchema = z.object({ mediaId: z.uuid().nullable() });
+
+// --- Médias ---
+
+export const uploadUrlSchema = z.object({
+  mimeType: z.string().min(1).max(255),
+  size: z.number().int().positive("Taille invalide"),
+  fileName: z.string().trim().max(255).optional(),
+});
+
+export const registerMediaSchema = z.object({
+  objectKey: z.string().min(1).max(255),
+  fileName: z.string().trim().min(1).max(255).optional(),
+});
 
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;

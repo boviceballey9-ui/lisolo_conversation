@@ -66,7 +66,26 @@ Invoke-RestMethod http://localhost:4000/api/health
 | POST | `/api/groups/:id/admins` | `{ userId }` → nomme un admin (admin) |
 | POST | `/api/groups/:id/leave` | Quitter le groupe |
 
+| PATCH | `/api/groups/:id/photo` | `{ mediaId \| null }` → photo du groupe (admin) |
+| PATCH | `/api/users/me/avatar` | `{ mediaId \| null }` → ma photo de profil |
+| POST | `/api/media/upload-url` | `{ mimeType, size, fileName? }` → URL présignée PUT vers MinIO (5 min) |
+| POST | `/api/media` | `{ objectKey, fileName? }` → enregistre le fichier envoyé → `{ media }` |
+| GET | `/api/media/:id/url` | URL présignée GET (5 min), si vous avez le droit de lire ce média |
+
 Un membre non admin reçoit **403** sur les actions d'admin ; un non-membre reçoit **404**.
+
+### Envoi d'un fichier
+
+Le fichier va **directement du navigateur à MinIO**, jamais à travers le backend :
+
+```
+navigateur ──1. upload-url──▶ backend (vérifie type/taille, signe)
+navigateur ──2. PUT fichier─▶ MinIO   (vérifie la signature)
+navigateur ──3. POST media──▶ backend (vérifie l'objet, crée la ligne media)
+navigateur ──4. message:send { mediaId } ──▶ Socket.io
+```
+
+Limites : images et messages vocaux 16 Mo, vidéos 64 Mo, documents 100 Mo.
 
 ### Temps réel (Socket.io, même port que l'API)
 
@@ -74,7 +93,7 @@ Connexion avec `auth: { token: <accessToken> }`.
 
 | Sens | Événement | Données |
 |---|---|---|
-| client → serveur | `message:send` | `{ conversationId, content, clientId? }` → ack `{ ok, message, clientId }` |
+| client → serveur | `message:send` | `{ conversationId, content?, mediaId?, clientId? }` (texte et/ou média) → ack `{ ok, message, clientId }` |
 | client → serveur | `message:delivered` | `{ messageIds }` (✓✓) |
 | client → serveur | `message:read` | `{ conversationId }` (✓✓ bleu) |
 | serveur → client | `message:new` | le message |

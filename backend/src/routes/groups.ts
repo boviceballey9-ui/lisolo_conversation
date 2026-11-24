@@ -8,9 +8,16 @@ import {
   promoteAdmin,
   removeMember,
   renameGroup,
+  setGroupPhoto,
   type GroupEffects,
 } from "../chat/groups.js";
-import { addMembersSchema, createGroupSchema, promoteAdminSchema, renameGroupSchema } from "../chat/schemas.js";
+import {
+  addMembersSchema,
+  createGroupSchema,
+  promoteAdminSchema,
+  renameGroupSchema,
+  setPhotoSchema,
+} from "../chat/schemas.js";
 import { notFound } from "../errors.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { validateBody } from "../middleware/validate.js";
@@ -34,6 +41,9 @@ const broadcast = (req: Request, effects: GroupEffects) => {
   if (io) broadcastGroupEffects(io, effects);
 };
 
+// État du groupe renvoyé après chaque action d'admin.
+const groupState = (e: GroupEffects) => ({ name: e.name, photoId: e.photoId, members: e.members });
+
 // Créer un groupe : le créateur en devient admin.
 groupsRouter.post("/", validateBody(createGroupSchema), async (req, res, next) => {
   try {
@@ -50,7 +60,7 @@ groupsRouter.patch("/:id", validateBody(renameGroupSchema), async (req, res, nex
   try {
     const effects = await renameGroup(req.userId!, param(req, "id"), req.body.name);
     broadcast(req, effects);
-    res.json({ name: effects.name, members: effects.members });
+    res.json(groupState(effects));
   } catch (err) {
     next(err);
   }
@@ -61,7 +71,7 @@ groupsRouter.post("/:id/members", validateBody(addMembersSchema), async (req, re
   try {
     const effects = await addMembers(req.userId!, param(req, "id"), req.body.phones);
     broadcast(req, effects);
-    res.json({ name: effects.name, members: effects.members });
+    res.json(groupState(effects));
   } catch (err) {
     next(err);
   }
@@ -72,7 +82,7 @@ groupsRouter.delete("/:id/members/:userId", async (req, res, next) => {
   try {
     const effects = await removeMember(req.userId!, param(req, "id"), param(req, "userId"));
     broadcast(req, effects);
-    res.json({ name: effects.name, members: effects.members });
+    res.json(groupState(effects));
   } catch (err) {
     next(err);
   }
@@ -83,7 +93,18 @@ groupsRouter.post("/:id/admins", validateBody(promoteAdminSchema), async (req, r
   try {
     const effects = await promoteAdmin(req.userId!, param(req, "id"), req.body.userId);
     broadcast(req, effects);
-    res.json({ name: effects.name, members: effects.members });
+    res.json(groupState(effects));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Photo du groupe (admin) : { mediaId } d'une image déjà envoyée, ou null pour la retirer.
+groupsRouter.patch("/:id/photo", validateBody(setPhotoSchema), async (req, res, next) => {
+  try {
+    const effects = await setGroupPhoto(req.userId!, param(req, "id"), req.body.mediaId);
+    broadcast(req, effects);
+    res.json(groupState(effects));
   } catch (err) {
     next(err);
   }

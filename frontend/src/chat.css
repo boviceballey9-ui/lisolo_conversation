@@ -652,3 +652,192 @@ form.side-panel__section {
     max-width: 85%;
   }
 }
+
+/* ---------- Médias (étape 7) ---------- */
+
+.avatar--photo {
+  object-fit: cover;
+  background: var(--panel);
+}
+.avatar-button {
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.avatar-button:hover {
+  filter: brightness(0.9);
+}
+
+.media {
+  position: relative;
+  margin: -2px -4px 4px;
+}
+.media--image img,
+.media--video video {
+  display: block;
+  max-width: min(320px, 100%);
+  max-height: 340px;
+  border-radius: 6px;
+}
+.media--image img {
+  object-fit: cover;
+}
+.media--audio audio {
+  display: block;
+  width: min(280px, 70vw);
+  height: 40px;
+}
+.media__open {
+  display: block;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: zoom-in;
+}
+.media__placeholder {
+  display: grid;
+  place-items: center;
+  width: 220px;
+  height: 140px;
+  font-size: 32px;
+  background: rgba(11, 20, 26, 0.06);
+  border-radius: 6px;
+}
+.media--audio .media__placeholder {
+  height: 40px;
+  font-size: 20px;
+}
+
+/* Document : icône, nom, taille */
+.doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(280px, 70vw);
+  padding: 8px 10px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: rgba(11, 20, 26, 0.05);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.doc:disabled {
+  cursor: default;
+}
+.doc__icon {
+  font-size: 26px;
+}
+.doc__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.doc__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc__size {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Barre de progression de l'envoi vers MinIO */
+.upload-progress {
+  height: 4px;
+  margin-top: 6px;
+  overflow: hidden;
+  background: rgba(11, 20, 26, 0.12);
+  border-radius: 2px;
+}
+.upload-progress__bar {
+  height: 100%;
+  background: var(--green);
+  transition: width 0.15s linear;
+}
+
+/* Zone de saisie : trombone, micro */
+.chat__icon-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.chat__icon-btn:hover {
+  background: var(--border);
+}
+.attach {
+  position: relative;
+}
+.attach__menu {
+  position: absolute;
+  bottom: 48px;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 6px 0;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(11, 20, 26, 0.2);
+}
+.attach__menu button {
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.attach__menu button:hover {
+  background: var(--panel);
+}
+.chat__mic {
+  touch-action: none; /* appui long sans défilement ni zoom */
+  user-select: none;
+}
+.chat__mic--recording {
+  background: var(--danger);
+  transform: scale(1.12);
+}
+.recorder__status {
+  align-self: center;
+  font-size: 13px;
+  color: var(--danger);
+}
+.recorder__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--danger);
+  border-radius: 50%;
+  animation: blink 1s infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0.2;
+  }
+}
+.chat__notice {
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--danger);
+  background: #fff4f2;
+}
+
+.group-card__photo-actions {
+  display: flex;
+  gap: 6px;
+}

@@ -6,6 +6,7 @@ import {
   listConversations,
   listMessages,
   logout,
+  setMyAvatar,
   type Conversation,
   type DeliveryStatus,
   type Member,
@@ -20,6 +21,7 @@ import { MessageInfo } from "../components/MessageInfo";
 import { NewChat } from "../components/NewChat";
 import { NewGroup } from "../components/NewGroup";
 import { formatLastSeen } from "../format";
+import { kindOf, mimeOf, uploadFile } from "../media";
 import { createSocket } from "../socket";
 
 // Messages chargés d'une conversation + curseur pour charger les plus anciens.
@@ -39,6 +41,7 @@ interface StatusEvent {
 
 interface GroupState {
   name: string | null;
+  photoId?: string | null;
   members: Member[];
 }
 
@@ -131,8 +134,12 @@ export default function Chat() {
   }, []);
 
   // Nouveau nom / nouveaux membres d'un groupe (événement group:updated ou réponse de l'API).
-  const applyGroupState = useCallback((conversationId: string, { name, members }: GroupState) => {
-    setConversations((list) => list.map((c) => (c.id === conversationId ? { ...c, name, members } : c)));
+  const applyGroupState = useCallback((conversationId: string, { name, members, photoId }: GroupState) => {
+    setConversations((list) =>
+      list.map((c) =>
+        c.id === conversationId ? { ...c, name, members, ...(photoId !== undefined ? { photoId } : {}) } : c,
+      ),
+    );
   }, []);
 
   // J'ai quitté le groupe, ou on m'en a retiré : il disparaît de ma liste.
@@ -355,22 +362,20 @@ export default function Chat() {
 
   // Envoi optimiste : le message s'affiche tout de suite (🕓), puis est remplacé
   // par la version enregistrée quand le serveur confirme (ack).
-  const send = (content: string) => {
-    const socket = socketRef.current;
-    if (!activeId || !me || !socket) return;
-    const conversationId = activeId;
+  const startOptimistic = (conversationId: string, build: (clientId: string) => Partial<ChatMessage>) => {
     const clientId = crypto.randomUUID();
-    lastTypingEmit.current = null; // le serveur arrête lui-même « en train d'écrire » à l'envoi
     const optimistic: ChatMessage = {
       id: clientId,
       conversationId,
-      senderId: me.id,
-      senderName: me.name,
+      senderId: me!.id,
+      senderName: me!.name,
       type: "TEXT",
-      content,
+      content: null,
+      media: null,
       createdAt: new Date().toISOString(),
       status: "SENT",
       pending: true,
+      ...build(clientId),
     };
 
     const replace = (update: (m: ChatMessage) => ChatMessage) => {
@@ -396,20 +401,65 @@ export default function Chat() {
       return [{ ...conv, lastMessage: optimistic, updatedAt: optimistic.createdAt }, ...list.filter((c) => c !== conv)];
     });
 
-    socket
-      .timeout(10_000)
-      .emit(
-        "message:send",
-        { conversationId, content, clientId },
-        (err: Error | null, res?: { ok: boolean; message?: Message }) => {
-          if (err || !res?.ok || !res.message) {
-            replace((m) => ({ ...m, pending: false, failed: true }));
-          } else {
+    const fail = (errorText?: string) => replace((m) => ({ ...m, pending: false, failed: true, errorText }));
+
+    // Envoi du message par Socket.io (texte, ou référence vers un média déjà stocké).
+    const emitSend = (payload: { content?: string; mediaId?: string }) => {
+      const socket = socketRef.current;
+      if (!socket) return fail();
+      socket
+        .timeout(10_000)
+        .emit(
+          "message:send",
+          { conversationId, clientId, ...payload },
+          (err: Error | null, res?: { ok: boolean; message?: Message; error?: string }) => {
+            if (err || !res?.ok || !res.message) return fail(res?.error);
             const saved = res.message;
-            replace(() => saved);
-          }
-        },
-      );
+            replace((m) => ({ ...saved, localUrl: m.localUrl })); // garde l'aperçu local : pas de clignotement
+          },
+        );
+    };
+
+    return { replace, fail, emitSend };
+  };
+
+  const send = (content: string) => {
+    if (!activeId || !me) return;
+    lastTypingEmit.current = null; // le serveur arrête lui-même « en train d'écrire » à l'envoi
+    startOptimistic(activeId, () => ({ content })).emitSend({ content });
+  };
+
+  // Photo, vidéo, document ou message vocal :
+  // 1. envoi direct du fichier à MinIO (avec progression), 2. message:send avec l'id du média.
+  const sendFile = async (file: File) => {
+    if (!activeId || !me) return;
+    const mimeType = mimeOf(file);
+    const kind = kindOf(mimeType);
+    const { replace, fail, emitSend } = startOptimistic(activeId, (clientId) => ({
+      type: kind,
+      // Id provisoire = celui du message : tant qu'ils sont égaux, le fichier est « en cours d'envoi ».
+      media: { id: clientId, mimeType, size: file.size, fileName: file.name },
+      localUrl: kind === "DOCUMENT" ? undefined : URL.createObjectURL(file),
+      progress: 0,
+    }));
+    try {
+      const media = await uploadFile(file, (progress) => replace((m) => ({ ...m, progress })));
+      replace((m) => ({ ...m, media, progress: 1 }));
+      emitSend({ mediaId: media.id });
+    } catch (err) {
+      fail(err instanceof Error ? err.message : undefined);
+    }
+  };
+
+  // Ma photo de profil : même mécanisme (envoi direct à MinIO), puis PATCH /api/users/me/avatar.
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const changeMyPhoto = async (file: File) => {
+    try {
+      const media = await uploadFile(file);
+      setMe(await setMyAvatar(media.id));
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Impossible de changer la photo");
+    }
   };
 
   if (!me) return <div className="app-loading">Chargement…</div>;
@@ -448,7 +498,27 @@ export default function Chat() {
     <div className={`app${active ? " app--chat-open" : ""}`}>
       <aside className="sidebar">
         <header className="sidebar__header">
-          <Avatar name={me.name} size={40} />
+          {/* Cliquer sur mon avatar : changer ma photo de profil. */}
+          <button
+            type="button"
+            className="avatar-button"
+            onClick={() => avatarInput.current?.click()}
+            title="Changer ma photo de profil"
+            aria-label="Changer ma photo de profil"
+          >
+            <Avatar name={me.name} mediaId={me.avatarId} size={40} />
+          </button>
+          <input
+            ref={avatarInput}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            hidden
+            onChange={(e) => {
+              const file = e.currentTarget.files?.[0];
+              e.currentTarget.value = "";
+              if (file) changeMyPhoto(file);
+            }}
+          />
           <span className="sidebar__me">{me.name}</span>
           <button
             type="button"
@@ -495,6 +565,7 @@ export default function Chat() {
             meId={me.id}
             status={headerStatus(active)}
             onSend={send}
+            onSendFile={sendFile}
             onDraftChange={onDraftChange}
             onLoadOlder={loadOlder}
             onBack={() => {

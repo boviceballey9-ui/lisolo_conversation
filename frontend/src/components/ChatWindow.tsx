@@ -1,13 +1,24 @@
-import { Fragment, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { Conversation, Message } from "../api";
 import { formatDayLabel, formatTime } from "../format";
 import { Avatar } from "./Avatar";
 import { conversationTitle } from "./ConversationList";
+import { MediaContent } from "./MediaContent";
 import { Ticks } from "./Ticks";
+import { VoiceRecorder } from "./VoiceRecorder";
 
 // Message affiché : peut être « en attente » (envoi optimiste, pas encore confirmé)
 // ou en échec.
-export type ChatMessage = Message & { pending?: boolean; failed?: boolean };
+export type ChatMessage = Message & {
+  pending?: boolean;
+  failed?: boolean;
+  errorText?: string; // raison de l'échec (ex. « Fichier trop volumineux… »)
+  localUrl?: string; // aperçu local d'un fichier en cours d'envoi
+  progress?: number; // progression de l'envoi vers MinIO (0 → 1)
+};
+
+// Types acceptés par le sélecteur « Document » (le serveur revérifie).
+const DOCUMENT_ACCEPT = ".pdf,.txt,.csv,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp";
 
 interface Props {
   conversation: Conversation;
@@ -17,6 +28,7 @@ interface Props {
   // Sous-titre de l'en-tête : « en train d'écrire… », « en ligne », « vu(e) … ».
   status: { text: string; highlight?: boolean } | null;
   onSend: (content: string) => void;
+  onSendFile: (file: File) => void;
   onDraftChange: (draft: string) => void;
   onLoadOlder: () => Promise<void>;
   onBack: () => void;
@@ -31,6 +43,7 @@ export function ChatWindow({
   meId,
   status,
   onSend,
+  onSendFile,
   onDraftChange,
   onLoadOlder,
   onBack,
@@ -40,6 +53,24 @@ export function ChatWindow({
   const isGroup = conversation.type === "GROUP";
   const [draft, setDraft] = useState("");
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null); // erreur micro, etc.
+  const mediaInput = useRef<HTMLInputElement>(null);
+  const documentInput = useRef<HTMLInputElement>(null);
+
+  // Fichiers choisis dans le sélecteur : chacun devient un message.
+  const onFilesPicked = (input: HTMLInputElement) => {
+    for (const file of Array.from(input.files ?? [])) onSendFile(file);
+    input.value = ""; // permet de rechoisir le même fichier
+    setAttachOpen(false);
+  };
+
+  // Les messages d'information disparaissent seuls.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 4000);
+    return () => clearTimeout(timer);
+  }, [notice]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const previous = useRef({ firstId: "", lastId: "", scrollHeight: 0 });
 
@@ -109,7 +140,7 @@ export function ChatWindow({
           disabled={!isGroup}
           aria-label={isGroup ? "Infos du groupe" : undefined}
         >
-          <Avatar name={title} size={40} />
+          <Avatar name={title} mediaId={conversation.otherUser?.avatarId ?? conversation.photoId} size={40} />
           <div className="chat__identity-text">
             <div className="chat__title">{title}</div>
             {status && (
@@ -152,7 +183,16 @@ export function ChatWindow({
               {showDay && <div className="chat__day">{day}</div>}
               <div className={`bubble ${mine ? "bubble--mine" : "bubble--theirs"}`}>
                 {showSender && <span className="bubble__sender">{m.senderName}</span>}
-                <span className="bubble__text">{m.content}</span>
+                {m.media && (
+                  <MediaContent
+                    type={m.type}
+                    media={m.media}
+                    localUrl={m.localUrl}
+                    progress={m.progress}
+                    uploading={m.pending && m.media.id === m.id}
+                  />
+                )}
+                {m.content && <span className="bubble__text">{m.content}</span>}
                 <span className="bubble__meta">
                   {canInspect && (
                     <button
@@ -167,7 +207,11 @@ export function ChatWindow({
                   )}
                   {formatTime(m.createdAt)}
                   {mine && !m.failed && <Ticks status={m.status} pending={m.pending} />}
-                  {m.failed && <span className="bubble__failed">Non envoyé</span>}
+                  {m.failed && (
+                    <span className="bubble__failed" title={m.errorText}>
+                      {m.errorText ?? "Non envoyé"}
+                    </span>
+                  )}
                 </span>
               </div>
             </Fragment>
@@ -175,7 +219,55 @@ export function ChatWindow({
         })}
       </div>
 
+      {notice && (
+        <div className="chat__notice" role="alert">
+          {notice}
+        </div>
+      )}
       <form className="chat__composer" onSubmit={send}>
+        {/* Trombone : photo / vidéo, ou document. */}
+        <div className="attach">
+          <button
+            type="button"
+            className="chat__icon-btn"
+            onClick={() => setAttachOpen((v) => !v)}
+            aria-label="Joindre un fichier"
+            aria-expanded={attachOpen}
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M16.5 6.5v10a4.5 4.5 0 0 1-9 0V5a3 3 0 0 1 6 0v10.5a1.5 1.5 0 0 1-3 0V6.5H9v9a3 3 0 0 0 6 0V5a4.5 4.5 0 0 0-9 0v11.5a6 6 0 0 0 12 0v-10h-1.5z"
+              />
+            </svg>
+          </button>
+          {attachOpen && (
+            <div className="attach__menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => mediaInput.current?.click()}>
+                🖼️ Photo ou vidéo
+              </button>
+              <button type="button" role="menuitem" onClick={() => documentInput.current?.click()}>
+                📄 Document
+              </button>
+            </div>
+          )}
+          <input
+            ref={mediaInput}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
+            multiple
+            hidden
+            onChange={(e) => onFilesPicked(e.currentTarget)}
+          />
+          <input
+            ref={documentInput}
+            type="file"
+            accept={DOCUMENT_ACCEPT}
+            multiple
+            hidden
+            onChange={(e) => onFilesPicked(e.currentTarget)}
+          />
+        </div>
         <textarea
           rows={1}
           placeholder="Tapez un message"
@@ -188,11 +280,16 @@ export function ChatWindow({
           maxLength={4096}
           aria-label="Message"
         />
-        <button type="submit" className="chat__send" disabled={!draft.trim()} aria-label="Envoyer">
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path fill="currentColor" d="M2 21 23 12 2 3v7l15 2-15 2z" />
-          </svg>
-        </button>
+        {/* Comme WhatsApp : bouton « envoyer » quand on a écrit, micro sinon. */}
+        {draft.trim() ? (
+          <button type="submit" className="chat__send" aria-label="Envoyer">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path fill="currentColor" d="M2 21 23 12 2 3v7l15 2-15 2z" />
+            </svg>
+          </button>
+        ) : (
+          <VoiceRecorder onRecorded={onSendFile} onError={setNotice} />
+        )}
       </form>
     </section>
   );

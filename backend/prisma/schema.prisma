@@ -63,6 +63,7 @@ model User {
   participants  Participant[]
   sentMessages  Message[]       @relation("MessageSender")
   messageStatus MessageStatus[]
+  uploads       Media[]         @relation("MediaUploads")
 
   @@map("users")
 }
@@ -143,14 +144,18 @@ model MessageStatus {
 // Métadonnées d'un fichier stocké dans MinIO (le fichier lui-même est dans MinIO).
 model Media {
   id        String   @id @default(uuid()) @db.Uuid
-  objectKey String   @unique @map("object_key") // chemin de l'objet dans le bucket MinIO
-  mimeType  String   @map("mime_type") // ex. image/jpeg, audio/ogg
-  size      Int // taille en octets (Int : jusqu'à ~2 Go)
-  createdAt DateTime @default(now()) @map("created_at")
+  objectKey  String   @unique @map("object_key") // chemin de l'objet dans le bucket MinIO : users/<uploaderId>/<uuid>
+  mimeType   String   @map("mime_type") // ex. image/jpeg, audio/ogg
+  size       Int // taille en octets (Int : jusqu'à ~2 Go)
+  fileName   String?  @map("file_name") // nom d'origine, affiché pour les documents
+  uploaderId String   @map("uploader_id") @db.Uuid // seul lui peut l'attacher à un message ou à une photo
+  createdAt  DateTime @default(now()) @map("created_at")
 
+  uploader           User           @relation("MediaUploads", fields: [uploaderId], references: [id], onDelete: Cascade)
   messages           Message[]
   userAvatars        User[]         @relation("UserAvatar")
   conversationPhotos Conversation[] @relation("ConversationPhoto")
 
+  @@index([uploaderId])
   @@map("media")
 }

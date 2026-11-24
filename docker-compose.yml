@@ -33,6 +33,9 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      # Le navigateur envoie les fichiers DIRECTEMENT à MinIO (URL présignées) depuis
+      # une autre origine (localhost:5173) : MinIO doit l'autoriser (CORS).
+      MINIO_API_CORS_ALLOW_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
     ports:
       - "9000:9000" # API S3 (utilisée par le backend)
       - "9001:9001" # Console web d'administration

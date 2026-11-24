@@ -18,4 +18,13 @@ export const config = {
     refreshExpiresIn: "7d",
   },
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS) || 12,
+  storage: {
+    endpoint: process.env.MINIO_ENDPOINT || "http://localhost:9000",
+    accessKey: required("MINIO_ROOT_USER"),
+    secretKey: required("MINIO_ROOT_PASSWORD"),
+    // Getter : en test, loadTestEnv remplace MINIO_BUCKET après le chargement du .env.
+    get bucket() {
+      return process.env.MINIO_BUCKET || "media";
+    },
+  },
 } as const;

@@ -32,6 +32,31 @@ export function formatLastSeen(iso: string) {
   return `vu(e) le ${label} à ${time}`;
 }
 
+// Taille de fichier : "850 o", "12 Ko", "3,4 Mo".
+export function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`;
+  return `${(bytes / (1024 * 1024)).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Mo`;
+}
+
+// Durée d'un enregistrement : "0:07", "1:23".
+export function formatDuration(ms: number) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// Aperçu d'un message dans la liste des conversations.
+export function messagePreview(m: { type: string; content: string | null; media: { fileName: string | null } | null }) {
+  const label = {
+    IMAGE: "📷 Photo",
+    VIDEO: "🎥 Vidéo",
+    AUDIO: "🎤 Message vocal",
+    DOCUMENT: `📄 ${m.media?.fileName ?? "Document"}`,
+  }[m.type];
+  if (!label) return m.content ?? "";
+  return m.content ? `${label} · ${m.content}` : label;
+}
+
 // Initiales pour l'avatar : "Alice Martin" → "AM".
 export function initials(name: string) {
   return name
