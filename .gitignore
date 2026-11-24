@@ -8,6 +8,9 @@ node_modules/
 # Builds
 dist/
 
+# Client Prisma généré (recréé par `npm install` / `npm run db:generate`)
+backend/src/generated/
+
 # Logs
 *.log
 npm-debug.log*

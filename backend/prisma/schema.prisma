@@ -1,0 +1,149 @@
+// Schéma de la base de données du clone WhatsApp.
+// L'URL de connexion est définie dans prisma.config.ts (Prisma 7+).
+// Convention : modèles en PascalCase côté TypeScript, tables/colonnes en snake_case en SQL.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Enums ----------
+
+enum ConversationType {
+  PRIVATE // discussion à deux
+  GROUP
+
+  @@map("conversation_type")
+}
+
+enum ParticipantRole {
+  ADMIN
+  MEMBER
+
+  @@map("participant_role")
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+
+  @@map("message_type")
+}
+
+enum DeliveryStatus {
+  SENT // parti du serveur (une coche)
+  DELIVERED // arrivé sur l'appareil du destinataire (deux coches)
+  READ // lu (deux coches bleues)
+
+  @@map("delivery_status")
+}
+
+// ---------- Modèles ----------
+
+model User {
+  id         String    @id @default(uuid()) @db.Uuid
+  phone      String    @unique // identifiant de connexion, format E.164 (+33612345678)
+  name       String
+  avatarId   String?   @map("avatar_id") @db.Uuid
+  about      String    @default("Salut ! J'utilise WhatsApp Clone.")
+  lastSeenAt DateTime? @map("last_seen_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  avatar        Media?          @relation("UserAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
+  participants  Participant[]
+  sentMessages  Message[]       @relation("MessageSender")
+  messageStatus MessageStatus[]
+
+  @@map("users")
+}
+
+model Conversation {
+  id        String           @id @default(uuid()) @db.Uuid
+  type      ConversationType
+  name      String? // seulement pour les groupes
+  photoId   String?          @map("photo_id") @db.Uuid
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  photo        Media?        @relation("ConversationPhoto", fields: [photoId], references: [id], onDelete: SetNull)
+  participants Participant[]
+  messages     Message[]
+
+  @@map("conversations")
+}
+
+// Table de liaison N-N entre users et conversations.
+model Participant {
+  conversationId String          @map("conversation_id") @db.Uuid
+  userId         String          @map("user_id") @db.Uuid
+  role           ParticipantRole @default(MEMBER)
+  joinedAt       DateTime        @default(now()) @map("joined_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId]) // un utilisateur n'est qu'une fois dans une conversation
+  @@index([userId]) // « liste de mes conversations »
+  @@map("participants")
+}
+
+model Message {
+  id             String      @id @default(uuid()) @db.Uuid
+  conversationId String      @map("conversation_id") @db.Uuid
+  senderId       String      @map("sender_id") @db.Uuid
+  type           MessageType @default(TEXT)
+  content        String? // texte du message, ou légende d'un média
+  mediaId        String?     @map("media_id") @db.Uuid
+  replyToId      String?     @map("reply_to_id") @db.Uuid
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  conversation Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User            @relation("MessageSender", fields: [senderId], references: [id])
+  media        Media?          @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  replyTo      Message?        @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies      Message[]       @relation("MessageReplies")
+  statuses     MessageStatus[]
+
+  @@index([conversationId, createdAt(sort: Desc)]) // historique d'une conversation, du plus récent au plus ancien
+  @@index([senderId])
+  @@index([replyToId])
+  @@map("messages")
+}
+
+// Statut de livraison d'un message pour CHAQUE destinataire (utile dans les groupes).
+model MessageStatus {
+  messageId String         @map("message_id") @db.Uuid
+  userId    String         @map("user_id") @db.Uuid // le destinataire
+  status    DeliveryStatus @default(SENT)
+  updatedAt DateTime       @default(now()) @updatedAt @map("updated_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId])
+  @@index([userId, status]) // compter les messages non lus d'un utilisateur
+  @@map("message_status")
+}
+
+// Métadonnées d'un fichier stocké dans MinIO (le fichier lui-même est dans MinIO).
+model Media {
+  id        String   @id @default(uuid()) @db.Uuid
+  objectKey String   @unique @map("object_key") // chemin de l'objet dans le bucket MinIO
+  mimeType  String   @map("mime_type") // ex. image/jpeg, audio/ogg
+  size      Int // taille en octets (Int : jusqu'à ~2 Go)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  messages           Message[]
+  userAvatars        User[]         @relation("UserAvatar")
+  conversationPhotos Conversation[] @relation("ConversationPhoto")
+
+  @@map("media")
+}

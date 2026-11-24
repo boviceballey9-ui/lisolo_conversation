@@ -1,21 +1,24 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import "./env.js"; // doit rester le premier import (charge le .env)
 import cors from "cors";
-import dotenv from "dotenv";
 import express from "express";
-
-// Charge le .env situé à la racine du projet (un niveau au-dessus de backend/).
-const here = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(here, "../../.env") });
+import { prisma } from "./db.js";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Route de santé : permet de vérifier que le serveur répond.
-app.get("/health", (_req, res) => {
-  res.json({
-    status: "ok",
+// Route de santé : vérifie que le serveur répond et que PostgreSQL est joignable.
+app.get("/health", async (_req, res) => {
+  let database: "ok" | "error" = "ok";
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch {
+    database = "error";
+  }
+
+  res.status(database === "ok" ? 200 : 503).json({
+    status: database === "ok" ? "ok" : "degraded",
+    database,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });
