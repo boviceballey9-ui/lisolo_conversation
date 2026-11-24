@@ -96,6 +96,47 @@ Réponds toujours en français.
 - DTO message : `senderName` inclus (nom affiché en groupe, même pour un ancien membre). Résumé de conversation : `members: [{ user, role, joinedAt }]` pour un groupe (moi compris), `otherUser` pour le privé.
 - Photo de groupe : `PATCH /api/groups/:id/photo { mediaId | null }` (admin, image uploadée par lui), message système + `group:updated` avec `photoId`.
 
+## Appels audio / vidéo (PeerJS + Socket.io + coturn)
+
+- **Deux canaux** :
+  - Socket.io porte la **sonnerie** (`src/calls/socketCalls.ts`) ;
+  - PeerJS porte la **signalisation WebRTC** après le décroché (PeerServer `src/calls/peer.ts`, monté sur `/peerjs`, même port).
+
+  Le média va de navigateur à navigateur, ou passe par le relais TURN, jamais par le backend.
+- Événements (client → serveur, avec ack) :
+  - `call:invite { conversationId, type: AUDIO|VIDEO }` → `{ call, reason?: "OFFLINE" | "BUSY" }` ;
+  - `call:accept`, `call:reject`, `call:end { callId }`.
+- Événements (serveur → client, vers les rooms des **deux** utilisateurs) :
+  - `call:invite { call, caller }` (appelé seulement, tous ses onglets) ;
+  - `call:accept { call }` (l'appelant lance `peer.call`, les autres onglets de l'appelé se taisent) ;
+  - `call:reject` / `call:end { call }` ;
+  - `call:busy { call }` (appelant) ;
+  - puis `message:new` (message `CALL`).
+- **État en mémoire** dans `createCallManager` (`calls`, `userCall`) : un seul processus. La réservation des deux utilisateurs est **synchrone** avant l'écriture en base, pour que deux invitations simultanées donnent « occupé ».
+  - Appelé hors ligne (0 socket) → MISSED immédiat.
+  - Appelé déjà en appel → BUSY.
+  - Délai `callTimeoutMs` (30 s par défaut, 300 ms en test) → MISSED.
+  - Déconnexion du socket qui porte l'appel → fin de l'appel.
+  - Au démarrage, `closeStaleCalls()` clôt les appels restés RINGING ou ONGOING.
+- Statuts finaux : COMPLETED / MISSED (sans réponse, annulé par l'appelant, hors ligne) / REJECTED / BUSY. `finishCall` met à jour `calls` et crée un message `type: CALL` (`call_id`, `createdAt = startedAt`, sans statuts de livraison) dans la même transaction.
+- **PeerServer** :
+  - l'id PeerJS est l'id utilisateur ; le client envoie l'access token dans l'option `token`, et l'upgrade est refusé (401) sauf si le JWT est valide **et** `sub === id` ;
+  - `allow_discovery: false` ;
+  - **Piège** : un `ws.WebSocketServer({ server, path })` répond 400 et ferme **toutes** les autres connexions WebSocket du serveur HTTP (dont `/socket.io`). D'où `createWebSocketServer` en `noServer: true`, avec notre propre écouteur `upgrade` qui ne prend que `/peerjs/peerjs`. Vérifié : sans ça, les 12 tests socket échouent.
+- Une connexion PeerServer par id : le `Peer` est créé à l'appel et détruit à la fin (`frontend/src/calls/useCall.ts`), pour ne pas bloquer les autres onglets.
+- **ICE** : `GET /api/calls/ice-config` renvoie STUN + TURN avec des identifiants temporaires (12 h) :
+  - `username = "<expiration>:<userId>"`, `credential = base64(HMAC-SHA1(TURN_SECRET, username))` (`src/calls/ice.ts`) ;
+  - coturn est en `--use-auth-secret --static-auth-secret=${TURN_SECRET}` ;
+  - sans `TURN_SECRET` : repli sur `TURN_USER`/`TURN_PASSWORD` (coturn doit alors être lancé avec `--user`) ;
+  - `TURN_HOST` est l'hôte que le navigateur joint ;
+  - vérification manuelle : `turnutils_uclient -u <username> -w <credential> -y 127.0.0.1` dans `wa-coturn`.
+- Front : `useCall` (machine à états outgoing / incoming / connecting / active / ended), `CallScreens.tsx`, sonnerie WebAudio (`ringtone.ts`). Si la caméra est refusée : repli en audio seul ; si le micro est refusé : erreur (et `call:reject` envoyé si l'on décrochait).
+- **Limites** :
+  - pas d'appels de groupe ;
+  - `localhost` / `TURN_EXTERNAL_IP=127.0.0.1` : local seulement ;
+  - access token dans l'URL WebSocket PeerJS (vérifié à la connexion uniquement) ;
+  - pas de renégociation si la caméra est ajoutée en cours d'appel.
+
 ## Médias (MinIO, URL présignées)
 
 - **Le fichier ne passe jamais par le backend.** Parcours :
@@ -149,4 +190,4 @@ Réponds toujours en français.
 - **PostgreSQL** est exposé sur **5433** côté Windows (`POSTGRES_PORT`), car un PostgreSQL 18 natif occupe déjà 5432 sur la machine. Sans ça, `localhost:5432` atteint silencieusement la mauvaise base.
 - **MinIO CORS** : `MINIO_API_CORS_ALLOW_ORIGIN` doit contenir l'origine du frontend (PUT direct depuis le navigateur). Pour vérifier : `curl.exe -i -X OPTIONS http://localhost:9000/media/x -H "Origin: http://localhost:5173" -H "Access-Control-Request-Method: PUT"`.
 - **MinIO** utilise `cgr.dev/chainguard/minio` (`minio/minio` a été retiré de Docker Hub). Entrypoint déjà `/usr/bin/minio`, donc `command` ne contient que les arguments. Tourne en UID 65532 : garder un **volume nommé**, jamais un bind mount d'un dossier Windows (erreurs de permissions). API 9000, console 9001.
-- **coturn** : pas de `network_mode: host` (non supporté par Docker Desktop) ; ports 3478 udp/tcp + relais 49160-49200/udp publiés explicitement. Configuration uniquement par arguments (`command:`). Ne pas ajouter `-n` (l'entrypoint passe chaque argument dans `echo`, qui avale `-n`) ni `--no-cli` (déprécié en 4.19). `TURN_EXTERNAL_IP=127.0.0.1` ne convient qu'en local.
+- **coturn** : pas de `network_mode: host` (non supporté par Docker Desktop) ; ports 3478 udp/tcp + relais 49160-49200/udp publiés explicitement. Configuration uniquement par arguments (`command:`). Ne pas ajouter `-n` (l'entrypoint passe chaque argument dans `echo`, qui avale `-n`) ni `--no-cli` (déprécié en 4.19). `TURN_EXTERNAL_IP=127.0.0.1` ne convient qu'en local. Authentification par `--use-auth-secret` (secret `TURN_SECRET`) : changer le secret impose de recréer le conteneur (`docker compose up -d coturn`).

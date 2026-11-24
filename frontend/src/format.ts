@@ -45,8 +45,40 @@ export function formatDuration(ms: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+// Trace d'un appel, vue par `meId` : « Appel vidéo · 2:13 », « Appel vocal manqué », etc.
+export function callLabel(
+  call: { type: string; status: string; callerId: string; answeredAt: string | null; endedAt: string | null },
+  meId: string,
+) {
+  const outgoing = call.callerId === meId;
+  const kind = call.type === "VIDEO" ? "Appel vidéo" : "Appel vocal";
+  switch (call.status) {
+    case "COMPLETED": {
+      const ms = call.answeredAt && call.endedAt ? Date.parse(call.endedAt) - Date.parse(call.answeredAt) : 0;
+      return { text: `${kind} · ${formatDuration(ms)}`, missed: false, outgoing };
+    }
+    case "MISSED":
+      return { text: outgoing ? `${kind} · sans réponse` : `${kind} manqué`, missed: !outgoing, outgoing };
+    case "REJECTED":
+      return { text: `${kind} · refusé`, missed: false, outgoing };
+    case "BUSY":
+      return { text: outgoing ? `${kind} · occupé` : `${kind} manqué (vous étiez en ligne)`, missed: !outgoing, outgoing };
+    default:
+      return { text: `${kind} en cours`, missed: false, outgoing };
+  }
+}
+
 // Aperçu d'un message dans la liste des conversations.
-export function messagePreview(m: { type: string; content: string | null; media: { fileName: string | null } | null }) {
+export function messagePreview(
+  m: {
+    type: string;
+    content: string | null;
+    media: { fileName: string | null } | null;
+    call?: Parameters<typeof callLabel>[0] | null;
+  },
+  meId = "",
+) {
+  if (m.type === "CALL" && m.call) return `${m.call.type === "VIDEO" ? "🎥" : "📞"} ${callLabel(m.call, meId).text}`;
   const label = {
     IMAGE: "📷 Photo",
     VIDEO: "🎥 Vidéo",

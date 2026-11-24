@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { Conversation, Message } from "../api";
-import { formatDayLabel, formatTime } from "../format";
+import { callLabel, formatDayLabel, formatTime } from "../format";
 import { Avatar } from "./Avatar";
 import { conversationTitle } from "./ConversationList";
 import { MediaContent } from "./MediaContent";
@@ -34,6 +34,8 @@ interface Props {
   onBack: () => void;
   onOpenGroupInfo: () => void;
   onOpenMessageInfo: (messageId: string) => void;
+  callInProgress: boolean;
+  onStartCall: (type: "AUDIO" | "VIDEO") => void;
 }
 
 export function ChatWindow({
@@ -49,6 +51,8 @@ export function ChatWindow({
   onBack,
   onOpenGroupInfo,
   onOpenMessageInfo,
+  callInProgress,
+  onStartCall,
 }: Props) {
   const isGroup = conversation.type === "GROUP";
   const [draft, setDraft] = useState("");
@@ -150,6 +154,31 @@ export function ChatWindow({
             )}
           </div>
         </button>
+        {/* Appels : conversations privées uniquement (pas d'appels de groupe). */}
+        {!isGroup && (
+          <div className="chat__call-buttons">
+            <button
+              type="button"
+              className="chat__icon-btn"
+              onClick={() => onStartCall("AUDIO")}
+              disabled={callInProgress}
+              aria-label="Appel vocal"
+              title="Appel vocal"
+            >
+              📞
+            </button>
+            <button
+              type="button"
+              className="chat__icon-btn"
+              onClick={() => onStartCall("VIDEO")}
+              disabled={callInProgress}
+              aria-label="Appel vidéo"
+              title="Appel vidéo"
+            >
+              🎥
+            </button>
+          </div>
+        )}
       </header>
 
       <div className="chat__messages" ref={scrollRef}>
@@ -163,6 +192,32 @@ export function ChatWindow({
           const day = formatDayLabel(m.createdAt);
           const previous = messages[i - 1];
           const showDay = i === 0 || formatDayLabel(previous.createdAt) !== day;
+
+          // Trace d'un appel : pastille centrée, « Rappeler » en un clic.
+          if (m.type === "CALL" && m.call) {
+            const label = callLabel(m.call, meId);
+            return (
+              <Fragment key={m.id}>
+                {showDay && <div className="chat__day">{day}</div>}
+                <div className={`chat__call-log${label.missed ? " chat__call-log--missed" : ""}`}>
+                  <span aria-hidden="true">{label.outgoing ? "↗" : "↙"}</span>
+                  <span>
+                    {m.call.type === "VIDEO" ? "🎥" : "📞"} {label.text} · {formatTime(m.createdAt)}
+                  </span>
+                  {!isGroup && (
+                    <button
+                      type="button"
+                      className="chat__call-again"
+                      onClick={() => onStartCall(m.call!.type)}
+                      disabled={callInProgress}
+                    >
+                      Rappeler
+                    </button>
+                  )}
+                </div>
+              </Fragment>
+            );
+          }
 
           // Événement de groupe : pastille centrée, sans bulle ni coches.
           if (m.type === "SYSTEM") {

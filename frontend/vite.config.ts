@@ -10,6 +10,8 @@ export default defineConfig({
       "/api": "http://localhost:4000",
       // Socket.io : ws: true pour relayer aussi la connexion WebSocket (pas seulement HTTP).
       "/socket.io": { target: "http://localhost:4000", ws: true },
+      // PeerServer (signalisation WebRTC des appels) : WebSocket lui aussi.
+      "/peerjs": { target: "http://localhost:4000", ws: true },
     },
   },
 });

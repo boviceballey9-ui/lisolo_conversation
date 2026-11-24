@@ -10,7 +10,7 @@ const { prisma } = await import("../src/db.js");
 // Chaque test part d'une base vide. CASCADE vide aussi les tables liées.
 beforeEach(async () => {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "message_status", "messages", "participants", "conversations", "users", "media" CASCADE',
+    'TRUNCATE TABLE "message_status", "messages", "participants", "conversations", "users", "media", "calls" CASCADE',
   );
 });
 

@@ -3,6 +3,7 @@ import express, { type Request, type Response } from "express";
 import { prisma } from "./db.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { authRouter } from "./routes/auth.js";
+import { callsRouter } from "./routes/calls.js";
 import { conversationsRouter } from "./routes/conversations.js";
 import { groupsRouter } from "./routes/groups.js";
 import { mediaRouter } from "./routes/media.js";
@@ -38,6 +39,7 @@ export function createApp() {
   app.use("/api/conversations", conversationsRouter);
   app.use("/api/groups", groupsRouter);
   app.use("/api/media", mediaRouter);
+  app.use("/api/calls", callsRouter);
 
   app.use(errorHandler);
   return app;

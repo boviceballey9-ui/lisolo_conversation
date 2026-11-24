@@ -22,6 +22,8 @@ import { NewChat } from "../components/NewChat";
 import { NewGroup } from "../components/NewGroup";
 import { formatLastSeen } from "../format";
 import { kindOf, mimeOf, uploadFile } from "../media";
+import { CallScreen, IncomingCall } from "../calls/CallScreens";
+import { useCall } from "../calls/useCall";
 import { createSocket } from "../socket";
 
 // Messages chargés d'une conversation + curseur pour charger les plus anciens.
@@ -90,6 +92,9 @@ export default function Chat() {
   // Incrémenté à chaque accusé reçu : « Infos du message » se recharge.
   const [statusTick, setStatusTick] = useState(0);
   const [connected, setConnected] = useState(false);
+  // Le socket, aussi en état (pas seulement en ref) : le hook d'appels doit savoir quand il change.
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const call = useCall(socket, me);
   // Présence de mes contacts, et qui est en train d'écrire dans quelle conversation.
   const [presence, setPresence] = useState<Record<string, Presence>>({});
   const [typing, setTyping] = useState<Record<string, string[]>>({});
@@ -159,6 +164,7 @@ export default function Chat() {
     if (!meId) return;
     const socket = createSocket(goToLogin);
     socketRef.current = socket;
+    setSocket(socket);
     let firstConnection = true;
 
     socket.on("connect", () => {
@@ -181,7 +187,8 @@ export default function Chat() {
     // Nouveau message (reçu, ou envoyé depuis un autre de mes appareils).
     socket.on("message:new", (message: Message) => {
       const mine = message.senderId === meId;
-      const system = message.type === "SYSTEM"; // pas d'accusé, ne compte pas comme non lu
+      // Événement de groupe ou trace d'appel : pas d'accusé, ne compte pas comme non lu.
+      const system = message.type === "SYSTEM" || message.type === "CALL";
       const isOpen = activeRef.current === message.conversationId && isVisible();
 
       setThreads((t) => {
@@ -262,6 +269,7 @@ export default function Chat() {
     return () => {
       socket.disconnect();
       socketRef.current = null;
+      setSocket(null);
     };
   }, [meId, goToLogin, loadThread, applyGroupState, removeConversation]);
 
@@ -575,6 +583,13 @@ export default function Chat() {
             }}
             onOpenGroupInfo={() => setPanel({ kind: "group" })}
             onOpenMessageInfo={(messageId) => setPanel({ kind: "message", messageId })}
+            callInProgress={!!call.state}
+            onStartCall={(type) => {
+              if (active.otherUser) {
+                const { id, name, avatarId } = active.otherUser;
+                call.startCall(active.id, { id, name, avatarId }, type);
+              }
+            }}
           />
         ) : (
           <div className="chat-empty">
@@ -600,6 +615,21 @@ export default function Chat() {
           />
         )}
       </main>
+
+      {/* Appels : sonnerie entrante, puis écran d'appel (au-dessus de tout). */}
+      {call.state?.phase === "incoming" && (
+        <IncomingCall call={call.state} onAccept={call.accept} onReject={call.reject} />
+      )}
+      {call.state && call.state.phase !== "incoming" && (
+        <CallScreen
+          call={call.state}
+          localStream={call.localStream}
+          remoteStream={call.remoteStream}
+          onHangUp={call.hangUp}
+          onToggleMic={call.toggleMic}
+          onToggleCamera={call.toggleCamera}
+        />
+      )}
     </div>
   );
 }

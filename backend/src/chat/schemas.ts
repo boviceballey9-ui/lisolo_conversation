@@ -52,6 +52,15 @@ export const promoteAdminSchema = z.object({ userId: z.uuid() });
 // null = retirer la photo
 export const setPhotoSchema = z.object({ mediaId: z.uuid().nullable() });
 
+// --- Appels ---
+
+export const callInviteSchema = z.object({
+  conversationId: z.uuid(),
+  type: z.enum(["AUDIO", "VIDEO"]),
+});
+
+export const callIdSchema = z.object({ callId: z.uuid() });
+
 // --- Médias ---
 
 export const uploadUrlSchema = z.object({

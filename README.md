@@ -71,6 +71,7 @@ Invoke-RestMethod http://localhost:4000/api/health
 | POST | `/api/media/upload-url` | `{ mimeType, size, fileName? }` → URL présignée PUT vers MinIO (5 min) |
 | POST | `/api/media` | `{ objectKey, fileName? }` → enregistre le fichier envoyé → `{ media }` |
 | GET | `/api/media/:id/url` | URL présignée GET (5 min), si vous avez le droit de lire ce média |
+| GET | `/api/calls/ice-config` | Serveurs STUN/TURN pour les appels (identifiants TURN temporaires) |
 
 Un membre non admin reçoit **403** sur les actions d'admin ; un non-membre reçoit **404**.
 
@@ -100,6 +101,14 @@ Connexion avec `auth: { token: <accessToken> }`.
 | serveur → client | `message:status` | `{ conversationId, messageIds, userId, status, aggregates }` (`aggregates` : statut global, bleu quand tous ont lu) |
 | serveur → client | `group:updated` | `{ conversationId, name, members }` |
 | serveur → client | `group:removed` | `{ conversationId }` (vous avez quitté le groupe ou en avez été retiré) |
+| client → serveur | `call:invite` | `{ conversationId, type: "AUDIO" \| "VIDEO" }` → ack `{ ok, call, reason? }` (`OFFLINE`, `BUSY`) |
+| client → serveur | `call:accept` / `call:reject` / `call:end` | `{ callId }` |
+| serveur → client | `call:invite` | `{ call, caller }` : ça sonne (tous vos onglets) |
+| serveur → client | `call:accept` / `call:reject` / `call:end` / `call:busy` | `{ call }` |
+
+### Appels audio / vidéo
+
+La sonnerie passe par Socket.io ; la connexion audio/vidéo elle-même passe par **WebRTC** (bibliothèque PeerJS, PeerServer sur `/peerjs`), avec STUN/TURN fournis par coturn. Pour essayer : deux comptes dans deux navigateurs, ouvrez la discussion, puis 📞 ou 🎥 dans l'en-tête (autorisez micro et caméra). Délai de sonnerie : 30 s, puis « appel manqué ». Chaque appel laisse une trace dans la conversation.
 | client → serveur | `typing:start` / `typing:stop` | `{ conversationId }` (arrêt automatique après 3 s sans `typing:start`) |
 | client → serveur | `presence:get` | `{ userIds }` → ack `{ ok, presence: [{ userId, online, lastSeenAt }] }` |
 | serveur → client | `typing:update` | `{ conversationId, userId, isTyping }` |

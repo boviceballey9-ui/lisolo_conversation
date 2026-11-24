@@ -30,7 +30,7 @@ export function ConversationList({ conversations, activeId, meId, typingLabels, 
       {conversations.map((c) => {
         const last = c.lastMessage;
         const mine = last?.senderId === meId;
-        const system = last?.type === "SYSTEM";
+        const system = last?.type === "SYSTEM" || last?.type === "CALL"; // pas de coches ni d'auteur
         // En groupe, on précise qui a écrit : « Alice : salut ».
         const author = c.type === "GROUP" && last && !mine && !system ? `${last.senderName} : ` : "";
         return (
@@ -55,7 +55,7 @@ export function ConversationList({ conversations, activeId, meId, typingLabels, 
                     <span className="conv-item__preview">
                       {mine && !system && <Ticks status={last.status} />}
                       {author}
-                      {last ? messagePreview(last) : <em>Aucun message</em>}
+                      {last ? messagePreview(last, meId) : <em>Aucun message</em>}
                     </span>
                   )}
                   {c.unreadCount > 0 && (

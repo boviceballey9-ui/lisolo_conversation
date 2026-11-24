@@ -841,3 +841,184 @@ form.side-panel__section {
   display: flex;
   gap: 6px;
 }
+
+/* ---------- Appels (étape 8) ---------- */
+
+.chat__call-buttons {
+  display: flex;
+  gap: 2px;
+}
+.chat__icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Trace d'un appel dans le fil */
+.chat__call-log {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  padding: 5px 8px 5px 12px;
+  font-size: 13px;
+  color: #54656f;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 1px rgba(11, 20, 26, 0.13);
+}
+.chat__call-log--missed {
+  color: var(--danger);
+}
+.chat__call-again {
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--green-dark);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.chat__call-again:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Boutons ronds des écrans d'appel */
+.call-btn {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  font-size: 22px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.call-btn:hover {
+  filter: brightness(1.15);
+}
+.call-btn--off {
+  color: #111b21;
+  background: #fff;
+}
+.call-btn--hangup {
+  background: #ea0038;
+}
+.call-btn--accept {
+  background: var(--green);
+}
+
+/* Appel entrant : carte flottante */
+.call-incoming {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(420px, calc(100% - 32px));
+  padding: 14px 16px;
+  color: #fff;
+  background: #1f2c34;
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  transform: translateX(-50%);
+  animation: call-pop 0.2s ease-out;
+}
+.call-incoming__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.call-incoming__text span {
+  font-size: 13px;
+  opacity: 0.8;
+}
+.call-incoming__actions {
+  display: flex;
+  gap: 10px;
+}
+.call-incoming .call-btn {
+  width: 46px;
+  height: 46px;
+  font-size: 18px;
+}
+@keyframes call-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+}
+
+/* Écran d'appel : plein écran */
+.call-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: #0b141a;
+}
+.call-screen__remote {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.call-screen__audio-only {
+  display: none; /* le son est joué, l'image n'existe pas */
+}
+.call-screen__identity {
+  margin-bottom: 120px;
+}
+.call-screen__header {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+.call-screen__header strong {
+  font-size: 22px;
+  font-weight: 500;
+}
+.call-screen__warning {
+  font-size: 13px;
+  color: #ffd279;
+}
+/* Ma vidéo en vignette, en miroir comme devant une glace */
+.call-screen__local {
+  position: absolute;
+  right: 16px;
+  bottom: 110px;
+  width: min(28vw, 200px);
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  background: #1f2c34;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  transform: scaleX(-1);
+}
+.call-screen__local--off {
+  opacity: 0.25;
+}
+.call-screen__controls {
+  position: absolute;
+  bottom: 28px;
+  display: flex;
+  gap: 18px;
+}

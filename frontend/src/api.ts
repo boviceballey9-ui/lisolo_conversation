@@ -128,9 +128,10 @@ export interface Message {
   senderId: string;
   senderName: string;
   // SYSTEM : événement de groupe (« Alice a ajouté Bob »), affiché au centre, sans coches.
-  type: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT" | "SYSTEM";
+  type: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT" | "SYSTEM" | "CALL";
   content: string | null;
   media: MediaInfo | null; // pièce jointe (le fichier se lit via getMediaUrl)
+  call?: CallInfo | null; // message de type CALL : trace d'un appel
   createdAt: string;
   status: DeliveryStatus;
 }
@@ -140,6 +141,21 @@ export interface MediaInfo {
   mimeType: string;
   size: number;
   fileName: string | null;
+}
+
+export type CallType = "AUDIO" | "VIDEO";
+export type CallStatus = "RINGING" | "ONGOING" | "COMPLETED" | "MISSED" | "REJECTED" | "BUSY";
+
+export interface CallInfo {
+  id: string;
+  type: CallType;
+  status: CallStatus;
+  callerId: string;
+  calleeId?: string;
+  conversationId?: string;
+  startedAt: string;
+  answeredAt: string | null;
+  endedAt: string | null;
 }
 
 export type GroupRole = "ADMIN" | "MEMBER";
@@ -244,6 +260,11 @@ export async function setMyAvatar(mediaId: string | null) {
   const { user } = await apiFetch<{ user: User }>("/api/users/me/avatar", jsonInit("PATCH", { mediaId }));
   return user;
 }
+
+// ---------- Appels ----------
+
+// Serveurs STUN/TURN (identifiants TURN temporaires fournis par le backend).
+export const getIceConfig = () => apiFetch<{ iceServers: RTCIceServer[]; ttl: number | null }>("/api/calls/ice-config");
 
 export const leaveGroup = (groupId: string) => apiFetch<{ left: true }>(`/api/groups/${groupId}/leave`, jsonInit("POST"));
 

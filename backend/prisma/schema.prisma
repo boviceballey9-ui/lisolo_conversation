@@ -34,8 +34,27 @@ enum MessageType {
   VIDEO
   DOCUMENT
   SYSTEM // événement de groupe (« Alice a ajouté Bob »), sans accusés de réception
+  CALL // trace d'un appel (lié à la table calls), sans accusés de réception
 
   @@map("message_type")
+}
+
+enum CallType {
+  AUDIO
+  VIDEO
+
+  @@map("call_type")
+}
+
+enum CallStatus {
+  RINGING // ça sonne
+  ONGOING // décroché, en cours
+  COMPLETED // terminé après avoir été décroché
+  MISSED // pas de réponse (délai dépassé, appelant qui raccroche, destinataire hors ligne)
+  REJECTED // refusé par le destinataire
+  BUSY // destinataire déjà en appel
+
+  @@map("call_status")
 }
 
 enum DeliveryStatus {
@@ -64,6 +83,8 @@ model User {
   sentMessages  Message[]       @relation("MessageSender")
   messageStatus MessageStatus[]
   uploads       Media[]         @relation("MediaUploads")
+  callsMade     Call[]          @relation("CallCaller")
+  callsReceived Call[]          @relation("CallCallee")
 
   @@map("users")
 }
@@ -82,6 +103,7 @@ model Conversation {
   photo        Media?        @relation("ConversationPhoto", fields: [photoId], references: [id], onDelete: SetNull)
   participants Participant[]
   messages     Message[]
+  calls        Call[]
 
   @@map("conversations")
 }
@@ -109,6 +131,7 @@ model Message {
   content        String? // texte du message, ou légende d'un média
   mediaId        String?     @map("media_id") @db.Uuid
   replyToId      String?     @map("reply_to_id") @db.Uuid
+  callId         String?     @unique @map("call_id") @db.Uuid // message de type CALL
   createdAt      DateTime    @default(now()) @map("created_at")
 
   conversation Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -117,6 +140,7 @@ model Message {
   replyTo      Message?        @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies      Message[]       @relation("MessageReplies")
   statuses     MessageStatus[]
+  call         Call?           @relation(fields: [callId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt(sort: Desc)]) // historique d'une conversation, du plus récent au plus ancien
   @@index([senderId])
@@ -158,4 +182,28 @@ model Media {
 
   @@index([uploaderId])
   @@map("media")
+}
+
+// Historique des appels audio / vidéo 1-à-1.
+// Le média de l'appel (voix, image) ne passe jamais par le serveur : seule la trace est enregistrée.
+model Call {
+  id             String     @id @default(uuid()) @db.Uuid
+  conversationId String     @map("conversation_id") @db.Uuid
+  callerId       String     @map("caller_id") @db.Uuid
+  calleeId       String     @map("callee_id") @db.Uuid
+  type           CallType
+  status         CallStatus @default(RINGING)
+  startedAt      DateTime   @default(now()) @map("started_at") // début de la sonnerie
+  answeredAt     DateTime?  @map("answered_at") // décroché
+  endedAt        DateTime?  @map("ended_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  caller       User         @relation("CallCaller", fields: [callerId], references: [id], onDelete: Cascade)
+  callee       User         @relation("CallCallee", fields: [calleeId], references: [id], onDelete: Cascade)
+  message      Message?
+
+  @@index([conversationId])
+  @@index([callerId])
+  @@index([calleeId])
+  @@map("calls")
 }

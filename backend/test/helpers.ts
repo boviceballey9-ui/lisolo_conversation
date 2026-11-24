@@ -2,6 +2,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
 import { createApp } from "../src/app.js";
+import { attachPeerServer } from "../src/calls/peer.js";
 import { signAccessToken } from "../src/auth/tokens.js";
 import { prisma } from "../src/db.js";
 import { attachSocket, type SocketOptions } from "../src/socket.js";
@@ -22,6 +23,7 @@ export async function startServer(options?: SocketOptions) {
   const server = http.createServer(app);
   const io = attachSocket(server, options);
   app.set("io", io); // comme index.ts : les routes de groupe diffusent en temps réel
+  attachPeerServer(app, server);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as AddressInfo;
   return {

@@ -57,8 +57,11 @@ services:
     # (Ne pas ajouter "-n" : l'entrypoint de l'image le transforme en argument vide.)
     command:
       - --listening-port=3478
-      - --lt-cred-mech # authentification par identifiant/mot de passe
-      - --user=${TURN_USER}:${TURN_PASSWORD}
+      # Identifiants TEMPORAIRES (« TURN REST API ») : le backend fabrique
+      # username = "<expiration>:<userId>" et password = HMAC-SHA1(TURN_SECRET, username).
+      # coturn refait le calcul avec le même secret : aucun mot de passe fixe dans le navigateur.
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET}
       - --realm=${TURN_REALM}
       - --external-ip=${TURN_EXTERNAL_IP}
       - --min-port=49160

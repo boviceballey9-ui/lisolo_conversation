@@ -1,6 +1,8 @@
 import "./env.js"; // doit rester le premier import (charge le .env)
 import http from "node:http";
 import { createApp } from "./app.js";
+import { attachPeerServer } from "./calls/peer.js";
+import { closeStaleCalls } from "./calls/service.js";
 import { config } from "./config.js";
 import { attachSocket } from "./socket.js";
 import { ensureBucket } from "./storage.js";
@@ -17,11 +19,17 @@ try {
   );
 }
 
+// Appels restés « en cours » si le serveur s'est arrêté brutalement (leur état vivait en mémoire).
+const stale = await closeStaleCalls();
+if (stale > 0) console.log(`${stale} appel(s) interrompu(s) clôturé(s)`);
+
 const app = createApp();
 const server = http.createServer(app);
 // Les routes HTTP (ex. ajout d'un membre à un groupe) doivent pouvoir prévenir
 // les clients connectés : on leur donne accès au serveur Socket.io via l'app.
 app.set("io", attachSocket(server));
+// Signalisation WebRTC des appels (PeerJS), sur le même port : ws://…/peerjs/peerjs
+attachPeerServer(app, server);
 
 const port = Number(process.env.BACKEND_PORT) || 4000;
 server.listen(port, () => {

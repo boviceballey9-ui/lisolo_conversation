@@ -1,6 +1,5 @@
 import type http from "node:http";
-import { Server, type Socket } from "socket.io";
-import type { z } from "zod";
+import { Server } from "socket.io";
 import { verifyAccessToken } from "./auth/tokens.js";
 import { deliveredSchema, presenceGetSchema, readSchema, sendMessageSchema, typingSchema } from "./chat/schemas.js";
 import type { GroupEffects } from "./chat/groups.js";
@@ -15,20 +14,17 @@ import {
   setLastSeen,
   type StatusUpdate,
 } from "./chat/service.js";
-import { HttpError } from "./errors.js";
+import { createCallManager } from "./calls/socketCalls.js";
+import { groupRoom, userRoom } from "./rooms.js";
+import { handle } from "./socketHandle.js";
 
-// Room personnelle d'un utilisateur : tous ses onglets / appareils connectés y sont.
-// Pour envoyer quelque chose à un utilisateur, on émet vers sa room.
-export const userRoom = (userId: string) => `user:${userId}`;
-// Room d'un groupe : tous les sockets de tous ses membres. Un message de groupe
-// est émis UNE fois vers cette room, Socket.io le distribue à chacun.
-export const groupRoom = (groupId: string) => `group:${groupId}`;
-
-type Ack = (response: { ok: boolean; error?: string; [key: string]: unknown }) => void;
+export { groupRoom, userRoom }; // réexportés pour les modules existants
 
 export interface SocketOptions {
   // Délai après lequel « en train d'écrire » s'arrête tout seul sans nouveau typing:start.
   typingTimeoutMs?: number;
+  // Délai de sonnerie avant « appel manqué ».
+  callTimeoutMs?: number;
 }
 
 // État « en train d'écrire » d'un utilisateur dans une conversation.
@@ -38,7 +34,10 @@ interface TypingEntry {
   recipientIds: string[];
 }
 
-export function attachSocket(server: http.Server, { typingTimeoutMs = 3000 }: SocketOptions = {}) {
+export function attachSocket(
+  server: http.Server,
+  { typingTimeoutMs = 3000, callTimeoutMs = 30_000 }: SocketOptions = {},
+) {
   const io = new Server(server, { cors: { origin: true } });
 
   // ---------- État en mémoire (propre à ce serveur) ----------
@@ -47,6 +46,8 @@ export function attachSocket(server: http.Server, { typingTimeoutMs = 3000 }: So
   const connections = new Map<string, number>();
   // Clé "<userId>:<conversationId>".
   const typing = new Map<string, TypingEntry>();
+  // Appels audio / vidéo : sonnerie, occupé, manqué (voir calls/socketCalls.ts).
+  const calls = createCallManager(io, { isOnline: (id) => connections.has(id), callTimeoutMs });
 
   // Authentification au moment de la connexion (handshake) :
   // le client envoie son access token dans `auth.token`. Sans token valide, connexion refusée.
@@ -199,7 +200,10 @@ export function attachSocket(server: http.Server, { typingTimeoutMs = 3000 }: So
       };
     });
 
+    calls.register(socket);
+
     socket.on("disconnect", () => {
+      calls.onDisconnect(socket); // un appel porté par cet onglet se termine
       // Arrête les saisies signalées par CET onglet.
       for (const [key, entry] of typing) {
         if (entry.socketId === socket.id) stopTyping(userId, key.slice(userId.length + 1));
@@ -235,29 +239,5 @@ export function broadcastGroupEffects(io: Server, effects: GroupEffects) {
     name: effects.name,
     photoId: effects.photoId,
     members: effects.members,
-  });
-}
-
-// Enregistre un handler d'événement : valide le payload avec Zod, exécute,
-// et répond via l'ack. Une erreur ne fait jamais tomber le serveur.
-function handle<S extends z.ZodType>(
-  socket: Socket,
-  event: string,
-  schema: S,
-  fn: (data: z.infer<S>) => Promise<Record<string, unknown>>,
-) {
-  socket.on(event, async (payload: unknown, ack?: Ack) => {
-    const reply: Ack = typeof ack === "function" ? ack : () => {};
-    const parsed = schema.safeParse(payload);
-    if (!parsed.success) {
-      return reply({ ok: false, error: parsed.error.issues[0]?.message ?? "Données invalides" });
-    }
-    try {
-      reply({ ok: true, ...(await fn(parsed.data)) });
-    } catch (err) {
-      if (err instanceof HttpError) return reply({ ok: false, error: err.message });
-      console.error(err);
-      reply({ ok: false, error: "Erreur interne du serveur" });
-    }
   });
 }

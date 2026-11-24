@@ -20,6 +20,10 @@ export const messageSelect = {
   type: true,
   content: true,
   media: { select: mediaSelect }, // métadonnées seulement : le fichier se lit via GET /api/media/:id/url
+  // Message de type CALL : l'appel correspondant (type, statut, durée).
+  call: {
+    select: { id: true, type: true, status: true, callerId: true, startedAt: true, answeredAt: true, endedAt: true },
+  },
   createdAt: true,
   statuses: { select: { userId: true, status: true } },
 } as const;
@@ -46,6 +50,7 @@ export function toMessageDTO(m: MessageRow) {
     type: m.type,
     content: m.content,
     media: m.media,
+    call: m.call,
     createdAt: m.createdAt,
     status: aggregateStatus(m.statuses),
   };

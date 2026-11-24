@@ -18,6 +18,14 @@ export const config = {
     refreshExpiresIn: "7d",
   },
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS) || 12,
+  turn: {
+    host: process.env.TURN_HOST || "localhost", // tel que le NAVIGATEUR le joint
+    port: 3478,
+    secret: process.env.TURN_SECRET || "", // identifiants temporaires (recommandé)
+    user: process.env.TURN_USER || "", // repli : identifiants fixes
+    password: process.env.TURN_PASSWORD || "",
+    ttlSeconds: 12 * 60 * 60,
+  },
   storage: {
     endpoint: process.env.MINIO_ENDPOINT || "http://localhost:9000",
     accessKey: required("MINIO_ROOT_USER"),
