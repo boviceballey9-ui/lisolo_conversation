@@ -55,7 +55,21 @@ Invoke-RestMethod http://localhost:4000/api/health
 | POST | `/api/auth/login` | Connexion `{ phone, password }` → `{ user, accessToken, refreshToken }` |
 | POST | `/api/auth/refresh` | `{ refreshToken }` → `{ accessToken }` |
 | GET | `/api/users/me` | Mon profil (en-tête `Authorization: Bearer <accessToken>`) |
+| GET | `/api/conversations` | Mes conversations, avec le dernier message et le nombre de non-lus |
+| POST | `/api/conversations` | `{ phone }` → démarre (ou retrouve) une discussion avec ce numéro |
+| GET | `/api/conversations/:id/messages?limit=30&before=<id>` | Historique paginé → `{ messages, nextCursor }` |
 
+### Temps réel (Socket.io, même port que l'API)
+
+Connexion avec `auth: { token: <accessToken> }`.
+
+| Sens | Événement | Données |
+|---|---|---|
+| client → serveur | `message:send` | `{ conversationId, content, clientId? }` → ack `{ ok, message, clientId }` |
+| client → serveur | `message:delivered` | `{ messageIds }` (✓✓) |
+| client → serveur | `message:read` | `{ conversationId }` (✓✓ bleu) |
+| serveur → client | `message:new` | le message |
+| serveur → client | `message:status` | `{ conversationId, messageIds, userId, status }` |
 Console MinIO : http://localhost:9001 (identifiants `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` du `.env`).
 
 ## Base de données (Prisma)
@@ -81,7 +95,9 @@ Les tests utilisent une base séparée (`TEST_DATABASE_URL`, créée et migrée 
 
 - http://localhost:5173/register : inscription
 - http://localhost:5173/login : connexion
-- http://localhost:5173/ : profil (protégé)
+- http://localhost:5173/ : discussions (protégé)
+
+Pour essayer le chat : créez deux comptes (une fenêtre normale + une fenêtre de navigation privée), puis « Nouvelle discussion » avec le numéro de l'autre compte.
 
 ## Notes
 

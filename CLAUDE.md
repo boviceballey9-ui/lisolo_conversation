@@ -59,10 +59,27 @@ Réponds toujours en français.
 - `src/config.ts` lève une erreur au démarrage si un secret manque.
 - Frontend : `frontend/src/api.ts` (`apiFetch`) ajoute le Bearer et, sur 401, appelle `/api/auth/refresh` une fois puis rejoue la requête. Tokens dans `localStorage`.
 
+## Chat temps réel (Socket.io)
+
+- `src/index.ts` crée le serveur HTTP (`http.createServer(createApp())`) et y attache Socket.io (`attachSocket`, `src/socket.ts`) : même port 4000. Proxy Vite : `/socket.io` avec `ws: true`.
+- **Logique métier dans `src/chat/service.ts`**, partagée par les routes HTTP (`src/routes/conversations.ts`) et les handlers socket. Les erreurs métier sont des `HttpError` (`src/errors.ts`) : `errorHandler` les traduit en code HTTP, le socket en ack `{ ok: false, error }`.
+- Auth du socket au handshake (`auth.token` = access token, sinon `connect_error` `UNAUTHORIZED`). Chaque socket rejoint la room `user:<id>` ; on émet toujours vers une room utilisateur, jamais vers un socket précis (multi-onglets / appareils).
+- Contrat des événements :
+  - client → serveur (avec ack) : `message:send { conversationId, content, clientId? }` → `{ ok, message, clientId }` ; `message:delivered { messageIds }` ; `message:read { conversationId }`.
+  - serveur → client : `message:new` (destinataires + autres sockets de l'expéditeur, pas le socket émetteur) ; `message:status { conversationId, messageIds, userId, status }` (vers l'expéditeur).
+  - À la connexion, les messages `SENT` du destinataire passent à `DELIVERED` (reçus hors ligne).
+- Statuts **uniquement vers l'avant** (`SENT → DELIVERED → READ`, `advanceStatuses`). Le `status` d'un message dans les DTO = le moins avancé parmi ses destinataires.
+- Conversations privées : unicité par paire via `conversations.direct_key` (ids triés joints par `:`), création par `upsert` + reprise sur `P2002`.
+- Historique : pagination par curseur (`before` = id du plus ancien message affiché, ordre `createdAt desc, id desc`), page renvoyée en ordre chronologique + `nextCursor`.
+- `conversation.updatedAt` est mis à jour à chaque message (tri de la liste).
+- Frontend : état et handlers socket dans `frontend/src/pages/Chat.tsx` (refs pour lire l'état courant dans les handlers), envoi optimiste avec `clientId` remplacé à l'ack, `message:delivered` à la réception, `message:read` si la conversation est ouverte et l'onglet visible. Styles dans `frontend/src/chat.css`.
+- Limite connue : le token n'est vérifié qu'à la connexion du socket ; un socket ouvert survit à l'expiration de l'access token.
+
 ## Tests
 
 - `test/globalSetup.ts` crée la base `whatsapp_test` si besoin et y applique `prisma migrate deploy` ; `test/setup.ts` redirige `DATABASE_URL` vers `TEST_DATABASE_URL` (garde-fou : refuse si identique à la base de dev) et fait un `TRUNCATE` de toutes les tables avant **chaque** test. Ajouter une table → l'ajouter à ce `TRUNCATE`.
 - `BCRYPT_ROUNDS=4` en test. Fichiers en série (`fileParallelism: false`).
+- `test/helpers.ts` : `createUser()` (insert direct + token), `startServer()` (vrai serveur HTTP + Socket.io sur port 0, à fermer dans `afterEach`), `connect(url, token)`, `waitFor(socket, event)`, `expectNoEvent(socket, event)`. Côté client de test, utiliser `socket.emitWithAck(...)`.
 - `src/__tests__/` est exclu du build `tsc`.
 - Backend en ESM (`"type": "module"`, `module: NodeNext`) : les imports relatifs TypeScript doivent porter l'extension `.js`.
 - **Chargement du `.env`** : `backend/src/env.ts` doit rester le **premier import** de `index.ts`. En ESM les imports sont évalués avant le code, donc `db.ts` lirait `DATABASE_URL` trop tôt sinon.
@@ -72,6 +89,7 @@ Réponds toujours en français.
 - **Prisma 7.10.1, versions épinglées exactement** (`prisma`, `@prisma/client`, `@prisma/adapter-pg`). Le dist-tag npm `latest` de `prisma` pointe vers une `8.0.0-rc` : ne jamais faire `npm install prisma` sans version. Les trois paquets doivent avoir la même version.
 - Prisma 7 : l'URL de connexion n'est pas dans `schema.prisma` mais dans `backend/prisma.config.ts`, qui charge le `.env` **racine**. Le client est instancié avec l'adaptateur `PrismaPg` dans `backend/src/db.ts` (singleton `prisma` à réutiliser partout).
 - Client généré dans `backend/src/generated/prisma/` (ignoré par Git, importer depuis `./generated/prisma/client.js`).
+- **`migrate dev` refuse de tourner en environnement non interactif** quand il veut une confirmation (ex. ajout d'une contrainte unique). Contournement : créer le dossier `prisma/migrations/<horodatage>_<nom>/`, y écrire la sortie de `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script` dans `migration.sql`, puis `npx prisma migrate deploy` et `npx prisma generate`.
 - **Prisma 7 : `prisma migrate dev` ne régénère plus le client.** Le script `postdb:migrate` le fait après `npm run db:migrate` ; si on lance `npx prisma migrate dev` directement, enchaîner `npx prisma generate` (sinon erreurs « Unknown argument » sur les nouveaux champs).
 - Conventions du schéma : modèles PascalCase / champs camelCase côté TS, tables et colonnes snake_case en SQL (`@@map`/`@map`), ids UUID. Les fichiers (photo de profil, photo de groupe, pièces jointes) référencent la table `media` (clé d'objet MinIO), jamais une URL.
 - Changer `POSTGRES_PASSWORD` dans `.env` ne modifie pas une base déjà initialisée (l'image Postgres ne l'applique qu'à la création du volume) : faire un `ALTER USER whatsapp WITH PASSWORD ...` dans le conteneur, ou `docker compose down -v` si les données peuvent être perdues.

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 // Format international E.164 : "+" puis 7 à 15 chiffres, sans espaces (ex. +33612345678).
-const phone = z
+export const phone = z
   .string()
   .trim()
   .regex(/^\+[1-9]\d{6,14}$/, "Numéro au format international attendu, ex. +33612345678");

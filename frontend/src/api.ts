@@ -66,7 +66,8 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 // Demande un nouvel access token avec le refresh token. Renvoie false si impossible.
-async function refreshAccessToken(): Promise<boolean> {
+// Exporté : le socket s'en sert aussi quand sa connexion est refusée (token expiré).
+export async function refreshAccessToken(): Promise<boolean> {
   const refreshToken = tokens.refresh;
   if (!refreshToken) return false;
   try {
@@ -115,4 +116,49 @@ export function logout() {
 export async function getMe() {
   const { user } = await apiFetch<{ user: User }>("/api/users/me");
   return user;
+}
+
+// ---------- Chat ----------
+
+export type DeliveryStatus = "SENT" | "DELIVERED" | "READ";
+
+export interface Message {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  type: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT";
+  content: string | null;
+  createdAt: string;
+  status: DeliveryStatus;
+}
+
+export interface Conversation {
+  id: string;
+  type: "PRIVATE" | "GROUP";
+  name: string | null;
+  updatedAt: string;
+  otherUser: User | null;
+  lastMessage: Message | null;
+  unreadCount: number;
+}
+
+export async function listConversations() {
+  const { conversations } = await apiFetch<{ conversations: Conversation[] }>("/api/conversations");
+  return conversations;
+}
+
+export async function startConversation(phone: string) {
+  const { conversation } = await apiFetch<{ conversation: Conversation }>("/api/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone }),
+  });
+  return conversation;
+}
+
+export async function listMessages(conversationId: string, before?: string) {
+  const query = before ? `?before=${encodeURIComponent(before)}` : "";
+  return apiFetch<{ messages: Message[]; nextCursor: string | null }>(
+    `/api/conversations/${conversationId}/messages${query}`,
+  );
 }

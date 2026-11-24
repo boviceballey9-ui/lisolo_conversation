@@ -8,6 +8,8 @@ export default defineConfig({
     // Les appels à /api/... sont transmis tels quels au backend (évite les soucis de CORS).
     proxy: {
       "/api": "http://localhost:4000",
+      // Socket.io : ws: true pour relayer aussi la connexion WebSocket (pas seulement HTTP).
+      "/socket.io": { target: "http://localhost:4000", ws: true },
     },
   },
 });
