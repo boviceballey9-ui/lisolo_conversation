@@ -18,6 +18,17 @@ export const config = {
     refreshExpiresIn: "7d",
   },
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS) || 12,
+  // Origines autorisées (CORS). Getter : relu à chaque fois (les tests peuvent le changer).
+  get corsOrigins(): string[] {
+    return (process.env.CORS_ORIGINS || "http://localhost:5173")
+      .split(",")
+      .map((o) => o.trim().replace(/\/$/, ""))
+      .filter(Boolean);
+  },
+  // Adresses publiques (derrière Nginx, en HTTPS) par lesquelles on peut joindre l'application.
+  get publicOrigins(): string[] {
+    return this.corsOrigins.filter((o) => o.startsWith("https://"));
+  },
   turn: {
     host: process.env.TURN_HOST || "localhost", // tel que le NAVIGATEUR le joint
     port: 3478,

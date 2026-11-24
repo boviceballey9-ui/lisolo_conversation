@@ -1,5 +1,6 @@
 import cors from "cors";
 import express, { type Request, type Response } from "express";
+import { config } from "./config.js";
 import { prisma } from "./db.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { authRouter } from "./routes/auth.js";
@@ -13,7 +14,11 @@ import { usersRouter } from "./routes/users.js";
 // index.ts appelle listen(), les tests passent l'app directement à Supertest.
 export function createApp() {
   const app = express();
-  app.use(cors());
+  // Derrière Nginx : faire confiance au proxy immédiat pour X-Forwarded-For / -Proto (req.ip, req.protocol).
+  app.set("trust proxy", 1);
+  // CORS : seulement les origines connues (Vite en développement, adresses HTTPS derrière Nginx).
+  // Sans en-tête Origin (même origine, curl, tests) : accepté.
+  app.use(cors({ origin: (origin, cb) => cb(null, !origin || config.corsOrigins.includes(origin)) }));
   app.use(express.json());
 
   // Santé : vérifie que le serveur répond et que PostgreSQL est joignable.

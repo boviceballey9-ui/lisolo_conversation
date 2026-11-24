@@ -166,6 +166,19 @@ Réponds toujours en français.
   - l'URL d'une vidéo ou d'un audio peut expirer pendant une lecture longue ;
   - pas de légende sur les médias.
 
+## HTTPS derrière Nginx (production locale)
+
+- Service `nginx` (`nginx/Dockerfile` multi-étapes : build Vite dans `node:24-alpine`, puis `nginx:1.28-alpine` avec `nginx/nginx.conf`). **Seul point d'entrée réseau** : 443 (et 80 → 301 vers 443). Postgres et MinIO sont publiés sur `127.0.0.1` seulement ; coturn reste public (UDP des appels).
+- Routes : `/` → statiques (`try_files … /index.html`, `/assets/` cache 1 an), `/api/` → backend, `/socket.io/` et `/peerjs/` → backend avec `proxy_http_version 1.1` + `Upgrade`/`Connection` + délais de 1 h, `/media/` → `minio:9000` (`client_max_body_size 101m`, `proxy_request_buffering off`).
+- Le backend tourne sur **Windows** (pas dans Docker). Nginx le joint via `host.docker.internal:4000`.
+- Après un changement du frontend ou de `nginx.conf` : `docker compose up -d --build nginx`.
+- Certificats : `scripts/gen-certs.ps1 [-Ip x.x.x.x]` (mkcert, pour localhost, 127.0.0.1, ::1 et l'IP Wi-Fi) → `nginx/certs/` monté en lecture seule, **ignoré par Git** (`nginx/certs/`, `*.pem`, `*.key`). Le script `.ps1` doit garder son BOM UTF-8 (sinon PowerShell 5.1 abîme les accents).
+- **Adresse publique** (`src/publicOrigin.ts`) : `publicOriginOf(req)` lit `X-Forwarded-Proto/Host` (posés par Nginx) et ne l'accepte que si `https://<hôte>` est dans `CORS_ORIGINS`. Sinon `null` : repli sur `MINIO_ENDPOINT` / `TURN_HOST`. Cette adresse sert à :
+  - **signer les URL présignées** (`signerFor` dans `storage.ts` : un S3Client de signature par origine, qui ne fait aucun accès réseau). La signature porte sur l'hôte : Nginx transmet `Host: $http_host` **tel quel** à MinIO et **vide** `X-Forwarded-Host` pour `/media/`. `location /media/` suppose `MINIO_BUCKET=media` ;
+  - annoncer coturn à la même adresse dans `ice-config`.
+- `CORS_ORIGINS` (liste séparée par des virgules) : CORS Express et Socket.io (sans en-tête `Origin` : accepté), `MINIO_API_CORS_ALLOW_ORIGIN`, et liste blanche des adresses publiques. `TURN_EXTERNAL_IP` et `TURN_HOST` = IP Wi-Fi du PC. Changer l'IP impose de : relancer `gen-certs.ps1`, mettre à jour `.env`, puis `docker compose up -d` (coturn, minio, nginx).
+- Téléphone : installer `rootCA.pem` de `mkcert -CAROOT` (**jamais** `rootCA-key.pem`) comme certificat d'autorité ; le pare-feu Windows doit laisser entrer 443 et l'UDP de coturn.
+
 ## Tests
 
 - `test/globalSetup.ts` crée la base `whatsapp_test` si besoin et y applique `prisma migrate deploy` ; `test/setup.ts` redirige `DATABASE_URL` vers `TEST_DATABASE_URL` (garde-fou : refuse si identique à la base de dev) et fait un `TRUNCATE` de toutes les tables avant **chaque** test. Ajouter une table → l'ajouter à ce `TRUNCATE`.

@@ -19,3 +19,8 @@ npm-debug.log*
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Certificats HTTPS locaux (mkcert) : jamais dans Git
+nginx/certs/
+*.pem
+*.key

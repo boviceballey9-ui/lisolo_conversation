@@ -5,6 +5,7 @@ import { notFound } from "../errors.js";
 import { registerUpload, readUrl, requestUpload } from "../media/service.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { validateBody } from "../middleware/validate.js";
+import { publicOriginOf } from "../publicOrigin.js";
 
 export const mediaRouter = Router();
 mediaRouter.use(requireAuth);
@@ -13,7 +14,7 @@ mediaRouter.use(requireAuth);
 //    valable 5 minutes. Le fichier lui-même n'est PAS envoyé ici.
 mediaRouter.post("/upload-url", validateBody(uploadUrlSchema), async (req, res, next) => {
   try {
-    res.json(await requestUpload(req.userId!, req.body));
+    res.json(await requestUpload(req.userId!, req.body, publicOriginOf(req)));
   } catch (err) {
     next(err);
   }
@@ -33,7 +34,7 @@ mediaRouter.get("/:id/url", async (req, res, next) => {
   try {
     const id = z.uuid().safeParse(req.params.id);
     if (!id.success) throw notFound("Média introuvable");
-    res.json(await readUrl(req.userId!, id.data));
+    res.json(await readUrl(req.userId!, id.data, publicOriginOf(req)));
   } catch (err) {
     next(err);
   }

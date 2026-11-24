@@ -32,6 +32,10 @@ app.set("io", attachSocket(server));
 attachPeerServer(app, server);
 
 const port = Number(process.env.BACKEND_PORT) || 4000;
-server.listen(port, () => {
-  console.log(`Backend démarré sur http://localhost:${port}`);
+// 127.0.0.1 par défaut : le backend n'est PAS joignable depuis le réseau, seulement via Nginx
+// (qui le contacte par host.docker.internal, relayé vers la boucle locale par Docker Desktop)
+// et via Vite en développement.
+const host = process.env.BACKEND_HOST || "127.0.0.1";
+server.listen(port, host, () => {
+  console.log(`Backend démarré sur http://${host}:${port}`);
 });

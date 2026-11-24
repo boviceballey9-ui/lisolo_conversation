@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { iceConfigFor } from "../calls/ice.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { publicHostOf } from "../publicOrigin.js";
 
 export const callsRouter = Router();
 callsRouter.use(requireAuth);
@@ -9,5 +10,5 @@ callsRouter.use(requireAuth);
 // l'utilisateur et temporaires : rien n'est écrit en dur dans le frontend.
 callsRouter.get("/ice-config", (req, res) => {
   res.set("Cache-Control", "no-store"); // contient des identifiants
-  res.json(iceConfigFor(req.userId!));
+  res.json(iceConfigFor(req.userId!, publicHostOf(req)));
 });

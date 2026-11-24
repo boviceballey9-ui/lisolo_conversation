@@ -1,5 +1,9 @@
 # Infrastructure locale du clone WhatsApp.
 # Les valeurs ${...} viennent du fichier .env à la racine (copie de .env.example).
+#
+# Point d'entrée UNIQUE depuis le réseau : nginx (443, et 80 qui redirige vers 443).
+# Les autres ports ne sont publiés que sur 127.0.0.1 (le PC lui-même), sauf coturn :
+# le son et l'image des appels (UDP) ne peuvent pas passer par Nginx.
 
 services:
   # Base de données relationnelle : utilisateurs, conversations, messages...
@@ -12,7 +16,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432" # port Windows : port interne du conteneur
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432" # port Windows : port interne du conteneur (local seulement)
     volumes:
       - pgdata:/var/lib/postgresql/data # volume persistant : les données survivent aux redémarrages
     healthcheck:
@@ -33,12 +37,13 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      # Le navigateur envoie les fichiers DIRECTEMENT à MinIO (URL présignées) depuis
-      # une autre origine (localhost:5173) : MinIO doit l'autoriser (CORS).
-      MINIO_API_CORS_ALLOW_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      # Le navigateur envoie les fichiers à MinIO via des URL présignées. Derrière Nginx c'est
+      # la même origine (https://<hôte>/media/…) ; en développement avec Vite (localhost:5173 →
+      # localhost:9000) c'est une autre origine : MinIO doit l'autoriser (CORS).
+      MINIO_API_CORS_ALLOW_ORIGIN: ${CORS_ORIGINS:-http://localhost:5173}
     ports:
-      - "9000:9000" # API S3 (utilisée par le backend)
-      - "9001:9001" # Console web d'administration
+      - "127.0.0.1:9000:9000" # API S3 (backend, et Vite en développement) ; depuis le réseau : via Nginx /media/
+      - "127.0.0.1:9001:9001" # Console web d'administration : sur le PC uniquement
     volumes:
       - miniodata:/data
 
@@ -68,6 +73,25 @@ services:
       - --max-port=49200
       - --fingerprint
       - --log-file=stdout
+
+  # Reverse proxy HTTPS : sert le frontend (build de production) et route vers le backend et MinIO.
+  nginx:
+    build:
+      context: . # racine du dépôt : l'image construit aussi le frontend
+      dockerfile: nginx/Dockerfile
+    container_name: wa-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80" # redirection vers HTTPS
+      - "443:443"
+    volumes:
+      # Certificats mkcert (scripts/gen-certs.ps1), en lecture seule, jamais dans l'image ni dans Git.
+      - ./nginx/certs:/etc/nginx/certs:ro
+    extra_hosts:
+      # Le backend tourne sur Windows : « host.docker.internal » désigne le PC hôte.
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - minio
 
 volumes:
   pgdata:

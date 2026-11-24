@@ -18,13 +18,18 @@ export const mediaSelect = { id: true, mimeType: true, size: true, fileName: tru
 // Tous les fichiers d'un utilisateur sont rangés sous ce préfixe : la clé dit à qui il appartient.
 const userPrefix = (userId: string) => `users/${userId}/`;
 
-export async function requestUpload(userId: string, { mimeType, size }: { mimeType: string; size: number }) {
+// `publicOrigin` : adresse publique par laquelle le client nous joint (derrière Nginx), ou null.
+export async function requestUpload(
+  userId: string,
+  { mimeType, size }: { mimeType: string; size: number },
+  publicOrigin: string | null = null,
+) {
   const mime = baseMime(mimeType);
   const problem = checkFile(mime, size);
   if (problem) throw badRequest(problem);
 
   const objectKey = `${userPrefix(userId)}${randomUUID()}`;
-  const uploadUrl = await presignPut(objectKey, mime, size);
+  const uploadUrl = await presignPut(objectKey, mime, size, publicOrigin);
   return {
     uploadUrl,
     objectKey,
@@ -90,11 +95,11 @@ async function canRead(userId: string, mediaId: string) {
   return media;
 }
 
-export async function readUrl(userId: string, mediaId: string) {
+export async function readUrl(userId: string, mediaId: string, publicOrigin: string | null = null) {
   const media = await canRead(userId, mediaId);
   // 404 et non 403 : on ne confirme même pas que le fichier existe.
   if (!media) throw notFound("Média introuvable");
   const isDocument = categoryOf(media.mimeType) === "DOCUMENT";
-  const url = await presignGet(media.objectKey, { fileName: isDocument ? media.fileName : null });
+  const url = await presignGet(media.objectKey, { fileName: isDocument ? media.fileName : null, publicOrigin });
   return { url, expiresAt: new Date(Date.now() + PRESIGN_SECONDS * 1000) };
 }

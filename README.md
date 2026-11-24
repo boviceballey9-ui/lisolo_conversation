@@ -145,6 +145,45 @@ Pour essayer le chat : créez deux comptes (une fenêtre normale + une fenêtre 
 
 Pour essayer les groupes : un troisième compte (autre navigateur ou autre profil), puis « Nouveau groupe ». Cliquez sur l'en-tête du groupe pour ouvrir « Infos du groupe », et sur « Infos » dans une de vos bulles pour voir qui a lu.
 
+## HTTPS avec Nginx (build de production, accès depuis un téléphone)
+
+Nginx devient le **seul point d'entrée** : `https://localhost`, ou `https://<IP-du-PC>` depuis le Wi-Fi.
+
+```powershell
+# 1. Certificat local (mkcert) pour localhost, 127.0.0.1 et l'IP Wi-Fi du PC
+#    (une fois : winget install FiloSottile.mkcert ; mkcert -install)
+powershell -ExecutionPolicy Bypass -File scripts\gen-certs.ps1        # ou : -Ip 192.168.1.42
+
+# 2. Dans .env : mettre cette IP dans TURN_EXTERNAL_IP, TURN_HOST et CORS_ORIGINS
+
+# 3. Backend sur Windows (Nginx le joint via host.docker.internal:4000)
+cd backend; npm run build; npm start          # ou npm run dev
+
+# 4. Infrastructure + Nginx (construit aussi le frontend de production)
+cd ..; docker compose up -d --build
+# -> https://localhost   (http://localhost redirige vers https)
+```
+
+| Chemin | Destination |
+|---|---|
+| `/` | frontend (fichiers statiques du build Vite) |
+| `/api/` | backend |
+| `/socket.io/`, `/peerjs/` | backend, en WebSocket |
+| `/media/` | MinIO (URL présignées, fichiers jusqu'à 100 Mo) |
+
+Les certificats (`nginx/certs/`) ne sont **jamais** commités.
+
+### Tester sur un téléphone Android
+
+1. Le téléphone doit être sur **le même Wi-Fi** que le PC.
+2. Copiez sur le téléphone le certificat **racine** : `rootCA.pem`, dans le dossier affiché par `mkcert -CAROOT`. Par câble USB, Google Drive ou e-mail ; renommez-le en `rootCA.crt` si Android ne le reconnaît pas. **Ne copiez jamais `rootCA-key.pem`** : avec ce fichier, n'importe qui pourrait fabriquer un certificat que votre téléphone accepterait pour *n'importe quel* site.
+3. Sur le téléphone : *Paramètres → Sécurité et confidentialité → Plus de paramètres de sécurité → Chiffrement et identifiants → Installer un certificat → Certificat CA*. Confirmez l'avertissement, puis choisissez le fichier. Le chemin varie selon la marque : cherchez « certificat CA » dans les paramètres.
+4. Ouvrez `https://<IP-du-PC>` dans **Chrome** : cadenas, pas d'alerte. Firefox pour Android n'utilise pas les certificats installés par l'utilisateur, sauf si on l'active dans ses paramètres secrets.
+5. Si la page ne charge pas, c'est le pare-feu Windows. Le réseau Wi-Fi doit être en profil **Privé**, et Docker Desktop doit être autorisé à recevoir des connexions (port 443, et UDP 3478 et 49160-49200 pour les appels).
+6. Après l'essai, vous pouvez supprimer le certificat (*Chiffrement et identifiants → Identifiants de confiance → Utilisateur*).
+
+Le micro, la caméra et l'enregistrement vocal ne fonctionnent qu'en HTTPS (ou sur `localhost`) : c'est ce qui rend Nginx + HTTPS nécessaire pour tester les appels sur téléphone.
+
 ## Notes
 
 - **PowerShell 5.1 et les accents** : `Get-Content`/`Set-Content` lisent les fichiers UTF-8 sans BOM comme de l'ANSI et abîment les accents. Modifiez le `.env` avec VS Code plutôt qu'avec ces commandes.

@@ -1,6 +1,7 @@
 import type http from "node:http";
 import { Server } from "socket.io";
 import { verifyAccessToken } from "./auth/tokens.js";
+import { config } from "./config.js";
 import { deliveredSchema, presenceGetSchema, readSchema, sendMessageSchema, typingSchema } from "./chat/schemas.js";
 import type { GroupEffects } from "./chat/groups.js";
 import {
@@ -38,7 +39,10 @@ export function attachSocket(
   server: http.Server,
   { typingTimeoutMs = 3000, callTimeoutMs = 30_000 }: SocketOptions = {},
 ) {
-  const io = new Server(server, { cors: { origin: true } });
+  // Même liste d'origines que l'API REST (CORS_ORIGINS).
+  const io = new Server(server, {
+    cors: { origin: (origin, cb) => cb(null, !origin || config.corsOrigins.includes(origin)) },
+  });
 
   // ---------- État en mémoire (propre à ce serveur) ----------
   // Nombre de connexions ouvertes par utilisateur : un utilisateur avec 2 onglets

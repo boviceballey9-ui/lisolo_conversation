@@ -1,0 +1,9 @@
+# Ce qui n'a rien à faire dans le contexte de build Docker (lent, ou secret).
+**/node_modules
+**/dist
+.git
+.env
+.env.*
+nginx/certs
+backend
+*.log

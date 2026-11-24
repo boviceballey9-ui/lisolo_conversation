@@ -21,18 +21,36 @@ import { config } from "./config.js";
 // Durée de validité des URL présignées (envoi comme lecture).
 export const PRESIGN_SECONDS = 5 * 60;
 
-export const s3 = new S3Client({
-  endpoint: config.storage.endpoint,
-  region: "us-east-1", // MinIO ignore la région, mais la signature en exige une
-  credentials: { accessKeyId: config.storage.accessKey, secretAccessKey: config.storage.secretKey },
-  // URL « http://localhost:9000/media/clé » plutôt que « http://media.localhost:9000/clé » :
-  // MinIO n'a pas de sous-domaine par bucket.
-  forcePathStyle: true,
-  // Les versions récentes du SDK ajoutent par défaut une somme de contrôle (CRC32) à chaque envoi,
-  // y compris dans les URL présignées : le navigateur ne la fournit pas et l'envoi échoue.
-  requestChecksumCalculation: "WHEN_REQUIRED",
-  responseChecksumValidation: "WHEN_REQUIRED",
-});
+const makeClient = (endpoint: string) =>
+  new S3Client({
+    endpoint,
+    region: "us-east-1", // MinIO ignore la région, mais la signature en exige une
+    credentials: { accessKeyId: config.storage.accessKey, secretAccessKey: config.storage.secretKey },
+    // URL « http://localhost:9000/media/clé » plutôt que « http://media.localhost:9000/clé » :
+    // MinIO n'a pas de sous-domaine par bucket. (Derrière Nginx : « https://<hôte>/media/clé ».)
+    forcePathStyle: true,
+    // Les versions récentes du SDK ajoutent par défaut une somme de contrôle (CRC32) à chaque envoi,
+    // y compris dans les URL présignées : le navigateur ne la fournit pas et l'envoi échoue.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
+  });
+
+// Client « interne » : le backend parle directement à MinIO (création du bucket, HEAD, suppression).
+export const s3 = makeClient(config.storage.endpoint);
+
+// Clients de SIGNATURE, un par adresse publique (https://localhost, https://172.30.70.236…).
+// Signer ne demande aucun accès réseau : l'URL produite pointe vers Nginx, qui la relaie à MinIO
+// en conservant l'en-tête Host… sur lequel porte la signature.
+const signers = new Map<string, S3Client>();
+function signerFor(publicOrigin?: string | null) {
+  if (!publicOrigin) return s3; // développement sans Nginx : http://localhost:9000
+  let client = signers.get(publicOrigin);
+  if (!client) {
+    client = makeClient(publicOrigin);
+    signers.set(publicOrigin, client);
+  }
+  return client;
+}
 
 const isNotFound = (err: unknown) =>
   err instanceof S3ServiceException && (err.$metadata.httpStatusCode === 404 || err.name === "NotFound");
@@ -52,9 +70,9 @@ export async function ensureBucket(bucket = config.storage.bucket) {
 // URL d'envoi : autorise UN PUT, sur CETTE clé, avec CE type et CETTE taille, pendant 5 minutes.
 // Content-Type et Content-Length font partie de la signature : si le navigateur envoie
 // autre chose, MinIO refuse (403) sans même nous consulter.
-export function presignPut(key: string, mimeType: string, size: number) {
+export function presignPut(key: string, mimeType: string, size: number, publicOrigin?: string | null) {
   return getSignedUrl(
-    s3,
+    signerFor(publicOrigin),
     new PutObjectCommand({ Bucket: config.storage.bucket, Key: key, ContentType: mimeType, ContentLength: size }),
     { expiresIn: PRESIGN_SECONDS, signableHeaders: new Set(["content-type", "content-length"]) },
   );
@@ -62,12 +80,15 @@ export function presignPut(key: string, mimeType: string, size: number) {
 
 // URL de lecture : autorise UN GET sur CETTE clé pendant 5 minutes.
 // Pour un document, on demande à MinIO de répondre « téléchargement, avec ce nom ».
-export function presignGet(key: string, { fileName }: { fileName?: string | null } = {}) {
+export function presignGet(
+  key: string,
+  { fileName, publicOrigin }: { fileName?: string | null; publicOrigin?: string | null } = {},
+) {
   const disposition = fileName
     ? `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
     : undefined;
   return getSignedUrl(
-    s3,
+    signerFor(publicOrigin),
     new GetObjectCommand({ Bucket: config.storage.bucket, Key: key, ResponseContentDisposition: disposition }),
     { expiresIn: PRESIGN_SECONDS },
   );

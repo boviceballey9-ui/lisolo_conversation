@@ -18,8 +18,11 @@ export function turnCredential(secret: string, username: string) {
   return createHmac("sha1", secret).update(username).digest("base64");
 }
 
-export function iceConfigFor(userId: string, now = Date.now()): IceConfig {
-  const { host, port, secret, user, password, ttlSeconds } = config.turn;
+// `publicHost` : l'hôte par lequel le navigateur nous a joints (derrière Nginx). coturn est sur
+// la même machine : le navigateur le joindra à la même adresse. Sinon : TURN_HOST.
+export function iceConfigFor(userId: string, publicHost: string | null = null, now = Date.now()): IceConfig {
+  const { port, secret, user, password, ttlSeconds } = config.turn;
+  const host = publicHost ?? config.turn.host;
   const stun = { urls: `stun:${host}:${port}` };
   const turnUrls = [`turn:${host}:${port}?transport=udp`, `turn:${host}:${port}?transport=tcp`];
 
